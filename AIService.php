@@ -44,6 +44,8 @@ class CommentAI_AIService
                 return 'https://api.openai.com/v1';
             case 'deepseek':
                 return 'https://api.deepseek.com/v1';
+            case 'kimi':
+                return 'https://api.moonshot.cn/v1';
             case 'custom':
                 throw new Exception('使用自定义接口时必须填写API地址');
             default:

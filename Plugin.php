@@ -4,7 +4,7 @@
  * 
  * @package CommentAI
  * @author 璇
- * @version 1.0.0
+ * @version 1.1.0
  * @link https://github.com/BXCQ/CommentAI
  */
 
@@ -110,6 +110,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
                 'aliyun' => '阿里云百炼（通义千问 Qwen）',
                 'openai' => 'OpenAI（ChatGPT）',
                 'deepseek' => 'DeepSeek',
+                'kimi' => 'Kimi（月之暗面）',
                 'custom' => '自定义OpenAI兼容接口'
             ),
             'aliyun',
@@ -123,7 +124,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             '',
             _t('API Key *'),
-            _t('填入你的AI服务API密钥。<a href="https://bailian.console.aliyun.com/" target="_blank">阿里云</a> | <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> | <a href="https://platform.deepseek.com/" target="_blank">DeepSeek</a>')
+            _t('填入你的AI服务API密钥。<a href="https://bailian.console.aliyun.com/" target="_blank">阿里云</a> | <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> | <a href="https://platform.deepseek.com/" target="_blank">DeepSeek</a> | <a href="https://platform.moonshot.cn/" target="_blank">Kimi</a>')
         );
         $apiKey->input->setAttribute('class', 'w-100');
         $form->addInput($apiKey->addRule('required', _t('API Key 不能为空')));
@@ -133,7 +134,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             '',
             _t('API地址（可选）'),
-            _t('自定义API端点，留空使用默认值。<br>阿里云：https://dashscope.aliyuncs.com/compatible-mode/v1<br>OpenAI：https://api.openai.com/v1<br>DeepSeek：https://api.deepseek.com/v1')
+            _t('自定义API端点，留空使用默认值。<br>阿里云：https://dashscope.aliyuncs.com/compatible-mode/v1<br>OpenAI：https://api.openai.com/v1<br>DeepSeek：https://api.deepseek.com/v1<br>Kimi：https://api.moonshot.cn/v1')
         );
         $apiEndpoint->input->setAttribute('class', 'w-100');
         $form->addInput($apiEndpoint);
@@ -143,7 +144,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             'qwen-plus',
             _t('模型名称'),
-            _t('填入模型标识，如：qwen-plus、gpt-4o-mini、deepseek-chat')
+            _t('填入模型标识，如：qwen-plus、gpt-4o-mini、deepseek-chat、moonshot-v1-8k')
         );
         $form->addInput($modelName);
 

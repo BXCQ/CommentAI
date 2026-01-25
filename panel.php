@@ -291,9 +291,9 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
 }
 .queue-item-info {
     font-size: 14px;
@@ -301,6 +301,9 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 }
 .queue-item-info strong {
     color: #333;
+}
+.queue-item-content {
+    padding: 0 30px;
 }
 .status-badge {
     padding: 6px 14px;
@@ -316,14 +319,43 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 
 /* 内容框 */
 .comment-box, .reply-box {
-    padding: 15px;
+    padding: 15px 20px;
     margin: 10px 0;
-    background: #f8f9fa;
-    border-left: 4px solid #999;
-    border-radius: 4px;
+    border-radius: 8px;
+    max-width: 70%;
+    position: relative;
+}
+.comment-box {
+    background: #f0f0f0;
+    margin-left: 0;
+    margin-right: auto;
+    border-bottom-left-radius: 2px;
+}
+.comment-box::before {
+    content: '💬';
+    position: absolute;
+    left: -30px;
+    top: 15px;
+    font-size: 20px;
 }
 .reply-box {
-    border-left-color: #27ae60;
+    background: #e8f5e9;
+    margin-left: auto;
+    margin-right: 0;
+    border-bottom-right-radius: 2px;
+}
+.reply-box::before {
+    content: '🤖';
+    position: absolute;
+    right: -30px;
+    top: 15px;
+    font-size: 20px;
+}
+.comment-box strong, .reply-box strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #666;
+    font-size: 12px;
 }
 .error-box {
     padding: 15px;
@@ -492,24 +524,26 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
                     </span>
                 </div>
 
-                <div class="comment-box">
-                    <strong>💬 读者评论：</strong><br>
-                    <?php echo nl2br(htmlspecialchars($item->comment_text)); ?>
+                <div class="queue-item-content">
+                    <div class="comment-box">
+                        <strong>读者评论</strong>
+                        <?php echo nl2br(htmlspecialchars($item->comment_text)); ?>
+                    </div>
+
+                    <?php if (!empty($item->ai_reply)): ?>
+                        <div class="reply-box">
+                            <strong>AI 回复</strong>
+                            <?php echo nl2br(htmlspecialchars($item->ai_reply)); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($item->error_msg)): ?>
+                        <div class="error-box">
+                            <strong>⚠️ 错误信息：</strong><br>
+                            <?php echo htmlspecialchars($item->error_msg); ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
-
-                <?php if (!empty($item->ai_reply)): ?>
-                    <div class="reply-box">
-                        <strong>🤖 AI回复：</strong><br>
-                        <?php echo nl2br(htmlspecialchars($item->ai_reply)); ?>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (!empty($item->error_msg)): ?>
-                    <div class="error-box">
-                        <strong>⚠️ 错误信息：</strong><br>
-                        <?php echo htmlspecialchars($item->error_msg); ?>
-                    </div>
-                <?php endif; ?>
 
                 <div class="action-buttons">
                     <?php if ($item->status == 'pending' || $item->status == 'suggest'): ?>
