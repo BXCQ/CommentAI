@@ -188,12 +188,16 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 /* 工具栏按钮特殊样式 */
 .btn-refresh {
     color: #666;
+    padding: 8px 16px;
+    font-size: 13px;
 }
 .btn-refresh:hover {
     background: #fafafa;
 }
 .btn-clean {
     color: #e67e22;
+    padding: 8px 16px;
+    font-size: 13px;
 }
 .btn-clean:hover {
     background: #fef5f1;
@@ -201,12 +205,16 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 }
 .btn-settings {
     color: #666;
+    padding: 8px 16px;
+    font-size: 13px;
 }
 .btn-settings:hover {
     background: #fafafa;
 }
 .btn-test {
     color: #27ae60;
+    padding: 8px 16px;
+    font-size: 13px;
 }
 .btn-test:hover {
     background: #f0f9f4;
@@ -319,51 +327,57 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 
 /* 内容框 */
 .comment-box, .reply-box {
-    padding: 15px 20px;
-    margin: 10px 0;
-    border-radius: 8px;
-    max-width: 70%;
+    padding: 12px 16px;
+    margin: 15px 0;
+    border-radius: 12px;
+    max-width: 65%;
     position: relative;
+    line-height: 1.6;
+    word-wrap: break-word;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .comment-box {
-    background: #f0f0f0;
-    margin-left: 0;
+    background: #f5f5f5;
+    margin-left: 40px;
     margin-right: auto;
-    border-bottom-left-radius: 2px;
+    border-bottom-left-radius: 4px;
 }
 .comment-box::before {
     content: '💬';
     position: absolute;
-    left: -30px;
-    top: 15px;
-    font-size: 20px;
+    left: -35px;
+    top: 12px;
+    font-size: 24px;
 }
 .reply-box {
-    background: #e8f5e9;
+    background: #dcf8c6;
     margin-left: auto;
-    margin-right: 0;
-    border-bottom-right-radius: 2px;
+    margin-right: 40px;
+    border-bottom-right-radius: 4px;
 }
 .reply-box::before {
     content: '🤖';
     position: absolute;
-    right: -30px;
-    top: 15px;
-    font-size: 20px;
+    right: -35px;
+    top: 12px;
+    font-size: 24px;
 }
 .comment-box strong, .reply-box strong {
     display: block;
-    margin-bottom: 8px;
-    color: #666;
-    font-size: 12px;
+    margin-bottom: 6px;
+    color: #999;
+    font-size: 11px;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 .error-box {
     padding: 15px;
     margin: 10px 0;
-    background: #f8d7da;
-    border-left: 4px solid #e74c3c;
+    background: #fff3cd;
+    border-left: 4px solid #f39c12;
     border-radius: 4px;
-    color: #721c24;
+    color: #856404;
 }
 
 /* 操作按钮组 */
