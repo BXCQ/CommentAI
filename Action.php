@@ -23,6 +23,12 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
 
     public function action()
     {
+        // 处理计划任务不需要管理员权限
+        if ($this->request->is('do=process_scheduled')) {
+            $this->processScheduled();
+            return;
+        }
+        
         $this->widget('Widget_User')->pass('administrator');
         $this->on($this->request->is('do=test'))->testConnection();
         $this->on($this->request->is('do=publish'))->publishReply();
@@ -31,6 +37,25 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
         $this->on($this->request->is('do=regenerate'))->regenerateReply();
         $this->on($this->request->is('do=clean'))->cleanQueue();
         $this->response->goBack();
+    }
+    
+    /**
+     * 处理计划任务
+     */
+    public function processScheduled()
+    {
+        try {
+            require_once __DIR__ . '/ReplyManager.php';
+            $manager = new CommentAI_ReplyManager($this->config);
+            $manager->processScheduledTasks();
+            
+            // 返回成功（不跳转）
+            echo 'OK';
+        } catch (Exception $e) {
+            CommentAI_Plugin::log('处理计划任务失败: ' . $e->getMessage());
+            echo 'ERROR';
+        }
+        exit;
     }
 
     /**

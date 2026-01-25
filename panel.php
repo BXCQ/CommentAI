@@ -22,9 +22,6 @@ $prefix = $db->getPrefix();
 require_once __DIR__ . '/ReplyManager.php';
 $manager = new CommentAI_ReplyManager($config);
 
-// 自动处理延迟队列
-$manager->processDelayedQueue();
-
 // 处理操作请求
 $do = isset($_GET['do']) ? $_GET['do'] : null;
 if ($do && Typecho_Widget::widget('Widget_User')->pass('administrator', true)) {

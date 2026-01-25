@@ -31,18 +31,9 @@ class CommentAI_ReplyManager
         // 检查是否需要延迟回复（仅在非跳过模式下）
         $replyDelay = intval($this->config->replyDelay ?: 0);
         if (!$skipDelay && $replyDelay > 0) {
-            // 将任务标记为延迟处理
-            CommentAI_Plugin::log('标记为延迟 ' . $replyDelay . ' 秒后处理');
-            $this->saveToQueue(
-                $commentData['coid'],
-                $commentData['cid'],
-                $commentData['author'],
-                $commentData['text'],
-                '',
-                'delayed',
-                null,
-                time() + $replyDelay
-            );
+            // 使用后台异步处理
+            CommentAI_Plugin::log('将在 ' . $replyDelay . ' 秒后异步处理');
+            $this->scheduleAsyncProcess($commentData, $replyDelay);
             return;
         }
         
@@ -320,31 +311,77 @@ class CommentAI_ReplyManager
     }
     
     /**
-     * 处理延迟队列（由定时任务调用）
+     * 异步调度处理（使用文件锁机制）
      */
-    public function processDelayedQueue()
+    private function scheduleAsyncProcess($commentData, $delay)
     {
-        $now = time();
-        
-        // 获取所有到期的延迟任务
-        $delayedItems = $this->db->fetchAll($this->db->select()
-            ->from($this->prefix . 'comment_ai_queue')
-            ->where('status = ?', 'delayed')
-            ->where('processed_at <= ?', $now)
+        // 创建一个标记文件，包含处理时间和评论数据
+        $scheduleFile = __DIR__ . '/schedule_' . $commentData['coid'] . '.json';
+        $scheduleData = array(
+            'commentData' => $commentData,
+            'processTime' => time() + $delay,
+            'created' => time()
         );
         
-        foreach ($delayedItems as $item) {
-            $item = (object)$item;
-            try {
-                // 重新处理评论（跳过延迟）
-                $this->processComment(array(
-                    'coid' => $item->cid,
-                    'author' => $item->comment_author,
-                    'text' => $item->comment_text,
-                    'cid' => $item->post_id
-                ), true);
-            } catch (Exception $e) {
-                CommentAI_Plugin::log('处理延迟队列失败: ' . $e->getMessage());
+        file_put_contents($scheduleFile, json_encode($scheduleData));
+        
+        // 触发后台处理（不阻塞）
+        $this->triggerBackgroundProcess();
+    }
+    
+    /**
+     * 触发后台处理
+     */
+    private function triggerBackgroundProcess()
+    {
+        // 使用 fsockopen 触发异步请求
+        $url = Helper::options()->siteUrl . 'action/comment-ai?do=process_scheduled';
+        $urlParts = parse_url($url);
+        
+        $fp = @fsockopen($urlParts['host'], isset($urlParts['port']) ? $urlParts['port'] : 80, $errno, $errstr, 1);
+        if ($fp) {
+            $out = "GET " . $urlParts['path'] . "?" . $urlParts['query'] . " HTTP/1.1\r\n";
+            $out .= "Host: " . $urlParts['host'] . "\r\n";
+            $out .= "Connection: Close\r\n\r\n";
+            fwrite($fp, $out);
+            fclose($fp);
+        }
+    }
+    
+    /**
+     * 处理计划任务
+     */
+    public function processScheduledTasks()
+    {
+        $scheduleDir = __DIR__;
+        $files = glob($scheduleDir . '/schedule_*.json');
+        
+        if (empty($files)) {
+            return;
+        }
+        
+        $now = time();
+        
+        foreach ($files as $file) {
+            $data = json_decode(file_get_contents($file), true);
+            
+            if (!$data || !isset($data['processTime'])) {
+                @unlink($file);
+                continue;
+            }
+            
+            // 检查是否到期
+            if ($data['processTime'] <= $now) {
+                try {
+                    // 处理评论
+                    $this->processComment($data['commentData'], true);
+                    CommentAI_Plugin::log('已处理延迟任务: ' . $data['commentData']['coid']);
+                } catch (Exception $e) {
+                    CommentAI_Plugin::log('处理延迟任务失败: ' . $e->getMessage());
+                }
+                
+                // 删除任务文件
+                @unlink($file);
             }
         }
     }
