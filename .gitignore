@@ -15,3 +15,7 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.bak
+
+# 其他文件
+GUIDE.md
+

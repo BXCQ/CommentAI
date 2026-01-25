@@ -330,7 +330,7 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
     padding: 12px 16px;
     margin: 15px 0;
     border-radius: 12px;
-    max-width: 65%;
+    max-width: 55%;
     position: relative;
     line-height: 1.6;
     word-wrap: break-word;
@@ -338,7 +338,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 }
 .comment-box {
     background: #f5f5f5;
-    margin-left: 40px;
     margin-right: auto;
     border-bottom-left-radius: 4px;
 }
@@ -352,7 +351,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 .reply-box {
     background: #dcf8c6;
     margin-left: auto;
-    margin-right: 40px;
     border-bottom-right-radius: 4px;
 }
 .reply-box::before {

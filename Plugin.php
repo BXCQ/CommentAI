@@ -4,7 +4,7 @@
  * 
  * @package CommentAI
  * @author 璇
- * @version 1.1.0
+ * @version 1.3.0
  * @link https://github.com/BXCQ/CommentAI
  */
 
@@ -44,17 +44,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
      */
     public static function config(Typecho_Widget_Helper_Form $form)
     {
-        $html = '<div style="padding:15px;background:#f9f9f9;border-left:4px solid #467b96;margin-bottom:20px;">';
-        $html .= '<h3 style="margin-top:0;">🤖 CommentAI - AI智能评论回复插件</h3>';
-        $html .= '<p>支持阿里云百炼、OpenAI、DeepSeek等多种AI平台，实现智能评论回复。</p>';
-        $html .= '<p><strong>功能特性：</strong></p>';
-        $html .= '<ul style="margin:10px 0;padding-left:20px;">';
-        $html .= '<li>🎯 支持全自动/人工审核/仅建议三种模式</li>';
-        $html .= '<li>🌐 多AI平台支持（阿里云Qwen、OpenAI、DeepSeek）</li>';
-        $html .= '<li>🔒 内置敏感词过滤和频率限制</li>';
-        $html .= '<li>📊 上下文感知（读取文章内容）</li>';
-        $html .= '<li>🤖 前端可选AI标识显示</li>';
-        $html .= '</ul></div>';
+        
         
         $intro = new Typecho_Widget_Helper_Layout();
         $intro->html($html);
