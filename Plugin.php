@@ -47,7 +47,6 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
         
         
         $intro = new Typecho_Widget_Helper_Layout();
-        $intro->html($html);
         $form->addItem($intro);
 
         // === 基础配置 ===
