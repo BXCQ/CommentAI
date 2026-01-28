@@ -45,10 +45,6 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
     public static function config(Typecho_Widget_Helper_Form $form)
     {
         
-        
-        $intro = new Typecho_Widget_Helper_Layout();
-        $form->addItem($intro);
-
         // === 基础配置 ===
         $basicTitle = new Typecho_Widget_Helper_Layout();
         $basicTitle->html('<h3 style="border-bottom:2px solid #467b96;padding-bottom:5px;">⚙️ 基础配置</h3>');
