@@ -65,7 +65,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
     {
         try {
             require_once __DIR__ . '/AIService.php';
-            $aiService = new CommentAI_AIService($this->config);
+            $aiService = CommentAI_AIService::create($this->config);
             $result = $aiService->testConnection();
             
             if ($result['success']) {

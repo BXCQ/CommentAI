@@ -1,7 +1,7 @@
 <?php
 /**
  * 回复管理器 - 处理评论、生成回复、发布管理
- * 
+ *
  * @package CommentAI
  */
 
@@ -21,30 +21,18 @@ class CommentAI_ReplyManager
     }
 
     /**
-     * 处理评论并生成AI回复
+     * 处理评论并生成AI回复（主入口）
      */
     public function processComment($commentData, $skipDelay = false)
     {
-        // 调试日志
         CommentAI_Plugin::log('收到评论数据: ' . json_encode($commentData, JSON_UNESCAPED_UNICODE));
-        
-        // 检查是否需要延迟回复（仅在非跳过模式下）
-        $replyDelay = intval($this->config->replyDelay ?: 0);
-        if (!$skipDelay && $replyDelay > 0) {
-            // 使用后台异步处理
-            CommentAI_Plugin::log('将在 ' . $replyDelay . ' 秒后异步处理');
-            $this->scheduleAsyncProcess($commentData, $replyDelay);
-            return;
-        }
-        
+
         // 获取评论详细信息
         $comment = $this->getCommentDetails($commentData['coid']);
         if (!$comment) {
             CommentAI_Plugin::log('评论不存在，coid: ' . $commentData['coid']);
             throw new Exception('评论不存在');
         }
-        
-        CommentAI_Plugin::log('评论信息: coid=' . $comment->coid . ', cid=' . $comment->cid);
 
         // 获取文章信息
         $post = $this->getPostDetails($comment->cid);
@@ -52,19 +40,114 @@ class CommentAI_ReplyManager
             CommentAI_Plugin::log('文章不存在，cid: ' . $comment->cid);
             throw new Exception('文章不存在');
         }
-        
-        CommentAI_Plugin::log('文章信息: cid=' . $post->cid . ', title=' . $post->title);
 
-        // 构建上下文
+        // 检查是否启用批量模式
+        $batchWindow = intval($this->config->batchWindow ?: 0);
+
+        if (!$skipDelay && $batchWindow > 0) {
+            // 批量收集模式
+            CommentAI_Plugin::log('批量模式：收集评论到批量队列，窗口 ' . $batchWindow . ' 秒');
+            $this->collectComment($comment, $post, $batchWindow);
+            return;
+        }
+
+        // 单条处理模式（含延迟）
+        $replyDelay = intval($this->config->replyDelay ?: 0);
+        if (!$skipDelay && $replyDelay > 0) {
+            CommentAI_Plugin::log('将在 ' . $replyDelay . ' 秒后异步处理');
+            $this->scheduleAsyncProcess($commentData, $replyDelay);
+            return;
+        }
+
+        // 直接处理单条评论
+        $this->processSingleComment($comment, $post);
+    }
+
+    /**
+     * 处理单条评论（含评论链追溯）
+     */
+    private function processSingleComment($comment, $post)
+    {
+        // 低价值评论检测
+        if ($this->isLowValueComment($comment->text)) {
+            $mode = $this->config->lowValueMode ?: 'skip';
+
+            if ($mode === 'skip') {
+                // 跳过模式：使用固定回复
+                $fixedReply = $this->config->lowValueReply ?: '感谢你的关注和支持！欢迎常来交流～';
+
+                if ($this->config->showAIBadge) {
+                    $badgeText = $this->config->aiBadgeText ?: '🤖 AI辅助回复';
+                    $fixedReply .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";
+                }
+
+                switch ($this->config->replyMode) {
+                    case 'auto':
+                        $this->publishReply($comment, $fixedReply);
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $fixedReply, 'published');
+                        break;
+                    case 'audit':
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $fixedReply, 'pending');
+                        break;
+                    case 'suggest':
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $fixedReply, 'suggest');
+                        break;
+                }
+                return;
+            }
+
+            // 精简模式：只发文章摘要，不发标题和评论链
+            $simplifiedContext = array();
+            $contextMode = is_array($this->config->contextMode) ? $this->config->contextMode : array();
+            if (in_array('article_excerpt', $contextMode)) {
+                $text = strip_tags($post->text);
+                $simplifiedContext['article_excerpt'] = mb_substr($text, 0, 300, 'UTF-8');
+            }
+
+            require_once __DIR__ . '/AIService.php';
+            $provider = CommentAI_AIService::create($this->config);
+
+            try {
+                $aiReply = $provider->generateReply($comment->text, $simplifiedContext);
+
+                if (!$this->checkSensitiveWords($aiReply)) {
+                    $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'rejected', '包含敏感词，已拦截');
+                    return;
+                }
+
+                if ($this->config->showAIBadge) {
+                    $badgeText = $this->config->aiBadgeText ?: '🤖 AI辅助回复';
+                    $aiReply .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";
+                }
+
+                switch ($this->config->replyMode) {
+                    case 'auto':
+                        $this->publishReply($comment, $aiReply);
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'published');
+                        break;
+                    case 'audit':
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'pending');
+                        break;
+                    case 'suggest':
+                        $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'suggest');
+                        break;
+                }
+            } catch (Exception $e) {
+                $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, '', 'error', $e->getMessage());
+            }
+            return;
+        }
+
+        // 构建上下文（含评论链）
         $context = $this->buildContext($comment, $post);
 
-        // 调用AI服务生成回复
+        // 调用 AI 服务
         require_once __DIR__ . '/AIService.php';
-        $aiService = new CommentAI_AIService($this->config);
-        
+        $provider = CommentAI_AIService::create($this->config);
+
         try {
-            $aiReply = $aiService->generateReply($comment->text, $context);
-            
+            $aiReply = $provider->generateReply($comment->text, $context);
+
             // 敏感词过滤
             if (!$this->checkSensitiveWords($aiReply)) {
                 $this->saveToQueue(
@@ -79,7 +162,7 @@ class CommentAI_ReplyManager
                 return;
             }
 
-            // 添加AI标识
+            // 添加 AI 标识
             if ($this->config->showAIBadge) {
                 $badgeText = $this->config->aiBadgeText ?: '🤖 AI辅助回复';
                 $aiReply .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";
@@ -88,57 +171,268 @@ class CommentAI_ReplyManager
             // 根据回复模式处理
             switch ($this->config->replyMode) {
                 case 'auto':
-                    // 全自动模式：直接发布
                     $this->publishReply($comment, $aiReply);
-                    $this->saveToQueue(
-                        $comment->coid,
-                        $comment->cid,
-                        $comment->author,
-                        $comment->text,
-                        $aiReply,
-                        'published'
-                    );
+                    $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'published');
                     break;
-
                 case 'audit':
-                    // 人工审核模式：保存到队列
-                    $this->saveToQueue(
-                        $comment->coid,
-                        $comment->cid,
-                        $comment->author,
-                        $comment->text,
-                        $aiReply,
-                        'pending'
-                    );
+                    $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'pending');
                     break;
-
                 case 'suggest':
-                    // 仅建议模式：保存到队列但标记为建议
-                    $this->saveToQueue(
-                        $comment->coid,
-                        $comment->cid,
-                        $comment->author,
-                        $comment->text,
-                        $aiReply,
-                        'suggest'
-                    );
+                    $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $aiReply, 'suggest');
                     break;
             }
 
         } catch (Exception $e) {
-            // 保存错误信息
-            $this->saveToQueue(
-                $comment->coid,
-                $comment->cid,
-                $comment->author,
-                $comment->text,
-                '',
-                'error',
-                $e->getMessage()
-            );
+            $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, '', 'error', $e->getMessage());
             throw $e;
         }
     }
+
+    // ==================== 评论链追溯 ====================
+
+    /**
+     * 构建上下文信息（含评论链追溯）
+     */
+    private function buildContext($comment, $post)
+    {
+        $context = array();
+        $contextMode = is_array($this->config->contextMode) ? $this->config->contextMode : array();
+
+        // 文章标题
+        if (in_array('article_title', $contextMode)) {
+            $context['article_title'] = $post->title;
+        }
+
+        // 文章摘要
+        if (in_array('article_excerpt', $contextMode)) {
+            $text = strip_tags($post->text);
+            $context['article_excerpt'] = mb_substr($text, 0, 300, 'UTF-8');
+        }
+
+        // 完整评论链追溯（替代原来的单层 parent_comment）
+        if (in_array('parent_comment', $contextMode) && $comment->parent > 0) {
+            $context['comment_chain'] = $this->buildCommentChain($comment);
+        }
+
+        return $context;
+    }
+
+    /**
+     * 构建完整评论链（向上追溯最多10层）
+     *
+     * @param object $comment 当前评论
+     * @return array 评论链，按时间顺序排列
+     */
+    private function buildCommentChain($comment)
+    {
+        $chain = array();
+        $current = $comment;
+        $maxDepth = 10;
+
+        while ($current->parent > 0 && $maxDepth-- > 0) {
+            $parent = $this->getCommentDetails($current->parent);
+            if (!$parent) break;
+
+            // 只追溯已审核通过的评论
+            if ($parent->status === 'approved') {
+                array_unshift($chain, array(
+                    'author' => $parent->author,
+                    'text' => $parent->text,
+                    'is_ai' => $this->isAIReply($parent)
+                ));
+            }
+
+            $current = $parent;
+        }
+
+        return $chain;
+    }
+
+    /**
+     * 判断评论是否是 AI 回复
+     */
+    private function isAIReply($comment)
+    {
+        return isset($comment->agent) && strpos($comment->agent, 'CommentAI') !== false;
+    }
+
+    // ==================== 批量处理 ====================
+
+    /**
+     * 生成游客唯一标识
+     */
+    private function getVisitorKey($comment)
+    {
+        $author = isset($comment->author) ? $comment->author : '';
+        $mail = isset($comment->mail) ? $comment->mail : '';
+        return md5($author . '|' . $mail);
+    }
+
+    /**
+     * 收集评论到批量队列（按游客+文章分组）
+     *
+     * @param object $comment 评论详情
+     * @param object $post 文章详情
+     * @param int $batchWindow 批量窗口（秒）
+     */
+    private function collectComment($comment, $post, $batchWindow)
+    {
+        // 低价值评论不进入批量队列，直接处理
+        if ($this->isLowValueComment($comment->text)) {
+            $this->processSingleComment($comment, $post);
+            return;
+        }
+
+        $visitorKey = $this->getVisitorKey($comment);
+        $batchFile = __DIR__ . '/batch_' . $visitorKey . '_' . $comment->cid . '.json';
+        $now = time();
+
+        if (file_exists($batchFile)) {
+            $batchData = json_decode(file_get_contents($batchFile), true);
+            if (!$batchData || !isset($batchData['comments'])) {
+                $batchData = null;
+            }
+        }
+
+        if (empty($batchData)) {
+            $batchData = array(
+                'visitorKey' => $visitorKey,
+                'visitorAuthor' => $comment->author,
+                'postId' => intval($comment->cid),
+                'postTitle' => $post->title,
+                'postExcerpt' => mb_substr(strip_tags($post->text), 0, 300, 'UTF-8'),
+                'comments' => array(),
+                'collectTime' => $now
+            );
+        }
+
+        // 追加评论
+        $chain = ($comment->parent > 0) ? $this->buildCommentChain($comment) : array();
+
+        $batchData['comments'][] = array(
+            'coid' => intval($comment->coid),
+            'author' => $comment->author,
+            'text' => $comment->text,
+            'parent' => intval($comment->parent),
+            'chain' => $chain
+        );
+
+        // 更新收集时间（每次新评论延长窗口）
+        $batchData['collectTime'] = $now;
+
+        file_put_contents($batchFile, json_encode($batchData, JSON_UNESCAPED_UNICODE));
+
+        CommentAI_Plugin::log('已收集评论到批量队列: 游客=' . $comment->author . ', 文章=' . $comment->cid . ', coid=' . $comment->coid . ', 当前批次共 ' . count($batchData['comments']) . ' 条');
+
+        // 触发后台处理
+        $this->triggerBackgroundProcess();
+    }
+
+    /**
+     * 处理批量评论（同一游客+同一篇文章的多条评论）
+     *
+     * @param string $batchFile 批量文件路径
+     */
+    private function processBatch($batchFile)
+    {
+        $batchData = json_decode(file_get_contents($batchFile), true);
+        if (!$batchData || empty($batchData['comments'])) {
+            @unlink($batchFile);
+            return;
+        }
+
+        $comments = $batchData['comments'];
+        $postId = $batchData['postId'];
+        $postTitle = $batchData['postTitle'];
+        $postExcerpt = $batchData['postExcerpt'];
+        $visitorAuthor = $batchData['visitorAuthor'];
+
+        CommentAI_Plugin::log('处理批量评论: 游客=' . $visitorAuthor . ', 文章=' . $postId . ', 评论数=' . count($comments));
+
+        // 只有1条评论时，退化为单条处理
+        if (count($comments) === 1) {
+            @unlink($batchFile);
+            $comment = $this->getCommentDetails($comments[0]['coid']);
+            $post = $this->getPostDetails($postId);
+            if ($comment && $post) {
+                $this->processSingleComment($comment, $post);
+            }
+            return;
+        }
+
+        // 批量调用 AI
+        require_once __DIR__ . '/AIService.php';
+        $provider = CommentAI_AIService::create($this->config);
+
+        try {
+            $results = $provider->generateBatchReplies($postTitle, $postExcerpt, $comments);
+
+            // 逐条保存结果
+            $coidMap = array();
+            foreach ($comments as $c) {
+                $coidMap[$c['coid']] = $c;
+            }
+
+            foreach ($results as $result) {
+                $coid = $result['coid'];
+                $reply = $result['reply'];
+
+                if (empty($reply) || !isset($coidMap[$coid])) {
+                    continue;
+                }
+
+                $commentInfo = $coidMap[$coid];
+                $comment = $this->getCommentDetails($coid);
+                if (!$comment) continue;
+
+                // 敏感词过滤
+                if (!$this->checkSensitiveWords($reply)) {
+                    $this->saveToQueue($coid, $postId, $commentInfo['author'], $commentInfo['text'], $reply, 'rejected', '包含敏感词，已拦截');
+                    continue;
+                }
+
+                // 添加 AI 标识
+                if ($this->config->showAIBadge) {
+                    $badgeText = $this->config->aiBadgeText ?: '🤖 AI辅助回复';
+                    $reply .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";
+                }
+
+                // 根据回复模式处理
+                switch ($this->config->replyMode) {
+                    case 'auto':
+                        $this->publishReply($comment, $reply);
+                        $this->saveToQueue($coid, $postId, $commentInfo['author'], $commentInfo['text'], $reply, 'published');
+                        break;
+                    case 'audit':
+                        $this->saveToQueue($coid, $postId, $commentInfo['author'], $commentInfo['text'], $reply, 'pending');
+                        break;
+                    case 'suggest':
+                        $this->saveToQueue($coid, $postId, $commentInfo['author'], $commentInfo['text'], $reply, 'suggest');
+                        break;
+                }
+            }
+
+        } catch (Exception $e) {
+            CommentAI_Plugin::log('批量处理失败，降级为逐条处理: ' . $e->getMessage());
+
+            // Fallback：逐条处理
+            foreach ($comments as $c) {
+                try {
+                    $comment = $this->getCommentDetails($c['coid']);
+                    $post = $this->getPostDetails($postId);
+                    if ($comment && $post) {
+                        $this->processSingleComment($comment, $post);
+                    }
+                } catch (Exception $ex) {
+                    $this->saveToQueue($c['coid'], $postId, $c['author'], $c['text'], '', 'error', $ex->getMessage());
+                }
+            }
+        }
+
+        @unlink($batchFile);
+    }
+
+    // ==================== 数据库操作 ====================
 
     /**
      * 获取评论详情
@@ -149,8 +443,6 @@ class CommentAI_ReplyManager
             ->from($this->prefix . 'comments')
             ->where('coid = ?', $coid)
         );
-        
-        // 转换为对象（如果是数组）
         return $row ? (object)$row : null;
     }
 
@@ -163,40 +455,7 @@ class CommentAI_ReplyManager
             ->from($this->prefix . 'contents')
             ->where('cid = ?', $cid)
         );
-        
-        // 转换为对象（如果是数组）
         return $row ? (object)$row : null;
-    }
-
-    /**
-     * 构建上下文信息
-     */
-    private function buildContext($comment, $post)
-    {
-        $context = array();
-        $contextMode = $this->config->contextMode ? $this->config->contextMode : array();
-
-        // 文章标题
-        if (in_array('article_title', $contextMode)) {
-            $context['article_title'] = $post->title;
-        }
-
-        // 文章摘要
-        if (in_array('article_excerpt', $contextMode)) {
-            // 移除HTML标签
-            $text = strip_tags($post->text);
-            $context['article_excerpt'] = mb_substr($text, 0, 300, 'UTF-8');
-        }
-
-        // 父评论
-        if (in_array('parent_comment', $contextMode) && $comment->parent > 0) {
-            $parentComment = $this->getCommentDetails($comment->parent);
-            if ($parentComment) {
-                $context['parent_comment'] = $parentComment->author . ': ' . $parentComment->text;
-            }
-        }
-
-        return $context;
     }
 
     /**
@@ -221,13 +480,46 @@ class CommentAI_ReplyManager
     }
 
     /**
+     * 低价值评论检测
+     *
+     * @param string $text 评论内容
+     * @return bool 是否为低价值评论
+     */
+    private function isLowValueComment($text)
+    {
+        if (!$this->config->lowValueDetection) {
+            return false;
+        }
+
+        $trimmed = trim($text);
+
+        // 关键词完全匹配
+        $lowValueWords = $this->config->lowValueWords;
+        if (!empty($lowValueWords)) {
+            $words = array_filter(array_map('trim', explode("\n", $lowValueWords)));
+            foreach ($words as $word) {
+                if (empty($word)) continue;
+                if ($trimmed === $word || mb_strtolower($trimmed, 'UTF-8') === mb_strtolower($word, 'UTF-8')) {
+                    return true;
+                }
+            }
+        }
+
+        // 纯数字且长度 <= 4（如 "1"、"666"、"1111"）
+        if (preg_match('/^\d{1,4}$/', $trimmed)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 发布回复
      */
     private function publishReply($comment, $replyText)
     {
         $adminUid = intval($this->config->adminUid ?: 1);
-        
-        // 获取管理员信息
+
         $admin = $this->db->fetchRow($this->db->select()
             ->from($this->prefix . 'users')
             ->where('uid = ?', $adminUid)
@@ -236,10 +528,9 @@ class CommentAI_ReplyManager
         if (!$admin) {
             throw new Exception('管理员用户不存在');
         }
-        
-        $admin = (object)$admin; // 转换为对象
 
-        // 插入回复
+        $admin = (object)$admin;
+
         $data = array(
             'cid' => $comment->cid,
             'created' => time(),
@@ -257,13 +548,13 @@ class CommentAI_ReplyManager
         );
 
         $insertId = $this->db->query($this->db->insert($this->prefix . 'comments')->rows($data));
-        
-        // 更新文章评论数 - 使用兼容的方式
+
+        // 更新文章评论数
         $post = $this->db->fetchRow($this->db->select('commentsNum')
             ->from($this->prefix . 'contents')
             ->where('cid = ?', $comment->cid)
         );
-        
+
         if ($post) {
             $newCount = intval($post['commentsNum']) + 1;
             $this->db->query($this->db->update($this->prefix . 'contents')
@@ -292,52 +583,47 @@ class CommentAI_ReplyManager
             'error_msg' => $errorMsg
         );
 
-        // 检查是否已存在
         $existing = $this->db->fetchRow($this->db->select()
             ->from($this->prefix . 'comment_ai_queue')
             ->where('cid = ?', $coid)
         );
 
         if ($existing) {
-            // 更新
             $this->db->query($this->db->update($this->prefix . 'comment_ai_queue')
                 ->rows($data)
                 ->where('cid = ?', $coid)
             );
         } else {
-            // 插入
             $this->db->query($this->db->insert($this->prefix . 'comment_ai_queue')->rows($data));
         }
     }
-    
+
+    // ==================== 异步调度 ====================
+
     /**
-     * 异步调度处理（使用文件锁机制）
+     * 异步调度处理（延迟回复）
      */
     private function scheduleAsyncProcess($commentData, $delay)
     {
-        // 创建一个标记文件，包含处理时间和评论数据
         $scheduleFile = __DIR__ . '/schedule_' . $commentData['coid'] . '.json';
         $scheduleData = array(
             'commentData' => $commentData,
             'processTime' => time() + $delay,
             'created' => time()
         );
-        
+
         file_put_contents($scheduleFile, json_encode($scheduleData));
-        
-        // 触发后台处理（不阻塞）
         $this->triggerBackgroundProcess();
     }
-    
+
     /**
      * 触发后台处理
      */
     private function triggerBackgroundProcess()
     {
-        // 使用 fsockopen 触发异步请求
         $url = Helper::options()->siteUrl . 'action/comment-ai?do=process_scheduled';
         $urlParts = parse_url($url);
-        
+
         $fp = @fsockopen($urlParts['host'], isset($urlParts['port']) ? $urlParts['port'] : 80, $errno, $errstr, 1);
         if ($fp) {
             $out = "GET " . $urlParts['path'] . "?" . $urlParts['query'] . " HTTP/1.1\r\n";
@@ -347,51 +633,66 @@ class CommentAI_ReplyManager
             fclose($fp);
         }
     }
-    
+
     /**
-     * 处理计划任务
+     * 处理计划任务（延迟 + 批量）
      */
     public function processScheduledTasks()
     {
-        $scheduleDir = __DIR__;
-        $files = glob($scheduleDir . '/schedule_*.json');
-        
-        if (empty($files)) {
-            return;
-        }
-        
         $now = time();
-        
-        foreach ($files as $file) {
+
+        // 1. 处理延迟任务
+        $scheduleFiles = glob(__DIR__ . '/schedule_*.json');
+        foreach ($scheduleFiles as $file) {
             $data = json_decode(file_get_contents($file), true);
-            
+
             if (!$data || !isset($data['processTime'])) {
                 @unlink($file);
                 continue;
             }
-            
-            // 检查是否到期
+
             if ($data['processTime'] <= $now) {
                 try {
-                    // 处理评论
                     $this->processComment($data['commentData'], true);
                     CommentAI_Plugin::log('已处理延迟任务: ' . $data['commentData']['coid']);
                 } catch (Exception $e) {
                     CommentAI_Plugin::log('处理延迟任务失败: ' . $e->getMessage());
                 }
-                
-                // 删除任务文件
                 @unlink($file);
             }
         }
+
+        // 2. 处理批量任务
+        $batchFiles = glob(__DIR__ . '/batch_*.json');
+        foreach ($batchFiles as $file) {
+            $data = json_decode(file_get_contents($file), true);
+
+            if (!$data || !isset($data['collectTime'])) {
+                @unlink($file);
+                continue;
+            }
+
+            $batchWindow = intval($this->config->batchWindow ?: 60);
+
+            // 收集窗口到期，处理这批评论
+            if ($data['collectTime'] + $batchWindow <= $now) {
+                try {
+                    $this->processBatch($file);
+                    CommentAI_Plugin::log('已处理批量任务: 游客=' . $data['visitorAuthor'] . ', 文章=' . $data['postId'] . ', 评论数=' . count($data['comments']));
+                } catch (Exception $e) {
+                    CommentAI_Plugin::log('处理批量任务失败: ' . $e->getMessage());
+                }
+            }
+        }
     }
+
+    // ==================== 队列管理 ====================
 
     /**
      * 从队列中发布回复
      */
     public function publishFromQueue($queueId)
     {
-        // 获取队列记录
         $queue = $this->db->fetchRow($this->db->select()
             ->from($this->prefix . 'comment_ai_queue')
             ->where('id = ?', $queueId)
@@ -400,19 +701,16 @@ class CommentAI_ReplyManager
         if (!$queue) {
             throw new Exception('队列记录不存在');
         }
-        
-        $queue = (object)$queue; // 转换为对象
 
-        // 获取评论信息
+        $queue = (object)$queue;
+
         $comment = $this->getCommentDetails($queue->cid);
         if (!$comment) {
             throw new Exception('原评论不存在');
         }
 
-        // 发布回复
         $this->publishReply($comment, $queue->ai_reply);
 
-        // 更新队列状态
         $this->db->query($this->db->update($this->prefix . 'comment_ai_queue')
             ->rows(array(
                 'status' => 'published',
@@ -447,7 +745,7 @@ class CommentAI_ReplyManager
     public function getQueueList($status = null, $page = 1, $pageSize = 20)
     {
         $select = $this->db->select()->from($this->prefix . 'comment_ai_queue');
-        
+
         if ($status) {
             $select->where('status = ?', $status);
         }
@@ -456,8 +754,7 @@ class CommentAI_ReplyManager
                ->page($page, $pageSize);
 
         $rows = $this->db->fetchAll($select);
-        
-        // 转换为对象数组
+
         return array_map(function($row) {
             return (object)$row;
         }, $rows);
@@ -483,7 +780,7 @@ class CommentAI_ReplyManager
         );
 
         foreach ($rows as $row) {
-            $row = (object)$row; // 转换为对象
+            $row = (object)$row;
             $stats[$row->status] = intval($row->count);
             $stats['total'] += intval($row->count);
         }
@@ -522,7 +819,7 @@ class CommentAI_ReplyManager
     public function cleanOldQueue($days = 30)
     {
         $timestamp = time() - ($days * 86400);
-        
+
         $this->db->query($this->db->delete($this->prefix . 'comment_ai_queue')
             ->where('created_at < ?', $timestamp)
             ->where('status IN ?', array('published', 'rejected'))

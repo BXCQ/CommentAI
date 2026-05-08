@@ -96,6 +96,8 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
                 'openai' => 'OpenAI（ChatGPT）',
                 'deepseek' => 'DeepSeek',
                 'kimi' => 'Kimi（月之暗面）',
+                'gemini' => 'Google Gemini',
+                'claude' => 'Anthropic Claude',
                 'custom' => '自定义OpenAI兼容接口'
             ),
             'aliyun',
@@ -109,7 +111,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             '',
             _t('API Key *'),
-            _t('填入你的AI服务API密钥。<a href="https://bailian.console.aliyun.com/" target="_blank">阿里云</a> | <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> | <a href="https://platform.deepseek.com/" target="_blank">DeepSeek</a> | <a href="https://platform.moonshot.cn/" target="_blank">Kimi</a>')
+            _t('填入你的AI服务API密钥。<a href="https://bailian.console.aliyun.com/" target="_blank">阿里云</a> | <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> | <a href="https://platform.deepseek.com/" target="_blank">DeepSeek</a> | <a href="https://platform.moonshot.cn/" target="_blank">Kimi</a> | <a href="https://aistudio.google.com/apikey" target="_blank">Gemini</a> | <a href="https://console.anthropic.com/" target="_blank">Claude</a>')
         );
         $apiKey->input->setAttribute('class', 'w-100');
         $form->addInput($apiKey->addRule('required', _t('API Key 不能为空')));
@@ -119,7 +121,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             '',
             _t('API地址（可选）'),
-            _t('自定义API端点，留空使用默认值。<br>阿里云：https://dashscope.aliyuncs.com/compatible-mode/v1<br>OpenAI：https://api.openai.com/v1<br>DeepSeek：https://api.deepseek.com/v1<br>Kimi：https://api.moonshot.cn/v1')
+            _t('自定义API端点，留空使用默认值。<br>阿里云：https://dashscope.aliyuncs.com/compatible-mode/v1<br>OpenAI：https://api.openai.com/v1<br>DeepSeek：https://api.deepseek.com/v1<br>Kimi：https://api.moonshot.cn/v1<br>Gemini：https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent<br>Claude：https://api.anthropic.com')
         );
         $apiEndpoint->input->setAttribute('class', 'w-100');
         $form->addInput($apiEndpoint);
@@ -129,7 +131,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             NULL,
             'qwen-plus',
             _t('模型名称'),
-            _t('填入模型标识，如：qwen-plus、gpt-4o-mini、deepseek-chat、moonshot-v1-8k')
+            _t('填入模型标识，如：qwen-plus、gpt-4o-mini、deepseek-chat、moonshot-v1-8k、gemini-2.0-flash、claude-sonnet-4-20250514')
         );
         $form->addInput($modelName);
 
@@ -212,6 +214,65 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             _t('检测到评论后延迟多少秒再回复，0为立即回复。建议设置30-120秒，让回复更自然')
         );
         $form->addInput($replyDelay);
+
+        $batchWindow = new Typecho_Widget_Helper_Form_Element_Text(
+            'batchWindow',
+            NULL,
+            '60',
+            _t('游客评论收集窗口（秒）'),
+            _t('同一游客在同一篇文章下的多条评论在该时间窗口内合并为一次API调用，大幅节省token消耗。建议30-120秒，0为禁用（逐条处理）')
+        );
+        $form->addInput($batchWindow);
+
+        // === 低价值评论过滤 ===
+        $lowValueTitle = new Typecho_Widget_Helper_Layout();
+        $lowValueTitle->html('<h3 style="border-bottom:2px solid #467b96;padding-bottom:5px;margin-top:30px;">🔍 低价值评论过滤</h3>');
+        $form->addItem($lowValueTitle);
+
+        $lowValueDetection = new Typecho_Widget_Helper_Form_Element_Radio(
+            'lowValueDetection',
+            array(
+                '1' => '启用',
+                '0' => '禁用'
+            ),
+            '1',
+            _t('低价值评论检测'),
+            _t('识别"感谢"、"看看"、"1"等无实质内容的评论，减少不必要的API调用')
+        );
+        $form->addInput($lowValueDetection);
+
+        $lowValueWords = new Typecho_Widget_Helper_Form_Element_Textarea(
+            'lowValueWords',
+            NULL,
+            "1\n11\n666\n看看\n学习\n感谢\n感谢分享\n谢谢\n收藏了\n支持\nmark\n来了\n赞\n不错\n很好",
+            _t('低价值关键词（每行一个）'),
+            _t('评论内容完全匹配这些词时触发过滤')
+        );
+        $lowValueWords->input->setAttribute('rows', 6);
+        $lowValueWords->input->setAttribute('class', 'w-100 mono');
+        $form->addInput($lowValueWords);
+
+        $lowValueMode = new Typecho_Widget_Helper_Form_Element_Radio(
+            'lowValueMode',
+            array(
+                'skip' => '跳过（使用下方自定义回复，不调用AI）',
+                'simplified' => '精简调用（只发送文章摘要给AI，生成简短回复）'
+            ),
+            'skip',
+            _t('处理方式'),
+            _t('识别到低价值评论后的处理策略')
+        );
+        $form->addInput($lowValueMode);
+
+        $lowValueReply = new Typecho_Widget_Helper_Form_Element_Text(
+            'lowValueReply',
+            NULL,
+            '感谢你的关注和支持！欢迎常来交流～',
+            _t('跳过模式的固定回复'),
+            _t('当选择"跳过"模式时，使用此固定回复内容。支持HTML标签')
+        );
+        $lowValueReply->input->setAttribute('class', 'w-100');
+        $form->addInput($lowValueReply);
 
         // === 显示设置 ===
         $displayTitle = new Typecho_Widget_Helper_Layout();

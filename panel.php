@@ -29,7 +29,7 @@ if ($do && Typecho_Widget::widget('Widget_User')->pass('administrator', true)) {
         switch ($do) {
             case 'test':
                 require_once __DIR__ . '/AIService.php';
-                $aiService = new CommentAI_AIService($config);
+                $aiService = CommentAI_AIService::create($config);
                 $result = $aiService->testConnection();
                 if ($result['success']) {
                     Typecho_Widget::widget('Widget_Notice')->set(
