@@ -36,6 +36,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
         $this->on($this->request->is('do=batch'))->batchProcess();
         $this->on($this->request->is('do=regenerate'))->regenerateReply();
         $this->on($this->request->is('do=clean'))->cleanQueue();
+        $this->on($this->request->is('do=clear_log'))->clearLog();
         $this->response->goBack();
     }
     
@@ -52,7 +53,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             // 返回成功（不跳转）
             echo 'OK';
         } catch (Exception $e) {
-            CommentAI_Plugin::log('处理计划任务失败: ' . $e->getMessage());
+            CommentAI_Plugin::log('处理计划任务失败: ' . $e->getMessage(), 'ERROR');
             echo 'ERROR';
         }
         exit;
@@ -232,6 +233,16 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             $this->widget('Widget_Notice')->set('❌ 清理失败: ' . $e->getMessage(), 'error');
         }
 
+        $this->response->goBack();
+    }
+
+    /**
+     * 清空日志
+     */
+    public function clearLog()
+    {
+        CommentAI_Plugin::clearLog();
+        $this->widget('Widget_Notice')->set('✅ 日志已清空', 'success');
         $this->response->goBack();
     }
 }

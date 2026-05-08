@@ -30,14 +30,14 @@ class CommentAI_ReplyManager
         // 获取评论详细信息
         $comment = $this->getCommentDetails($commentData['coid']);
         if (!$comment) {
-            CommentAI_Plugin::log('评论不存在，coid: ' . $commentData['coid']);
+            CommentAI_Plugin::log('评论不存在，coid: ' . $commentData['coid'], 'ERROR');
             throw new Exception('评论不存在');
         }
 
         // 获取文章信息
         $post = $this->getPostDetails($comment->cid);
         if (!$post) {
-            CommentAI_Plugin::log('文章不存在，cid: ' . $comment->cid);
+            CommentAI_Plugin::log('文章不存在，cid: ' . $comment->cid, 'ERROR');
             throw new Exception('文章不存在');
         }
 
@@ -413,7 +413,7 @@ class CommentAI_ReplyManager
             }
 
         } catch (Exception $e) {
-            CommentAI_Plugin::log('批量处理失败，降级为逐条处理: ' . $e->getMessage());
+            CommentAI_Plugin::log('批量处理失败，降级为逐条处理: ' . $e->getMessage(), 'ERROR');
 
             // Fallback：逐条处理
             foreach ($comments as $c) {
@@ -656,7 +656,7 @@ class CommentAI_ReplyManager
                     $this->processComment($data['commentData'], true);
                     CommentAI_Plugin::log('已处理延迟任务: ' . $data['commentData']['coid']);
                 } catch (Exception $e) {
-                    CommentAI_Plugin::log('处理延迟任务失败: ' . $e->getMessage());
+                    CommentAI_Plugin::log('处理延迟任务失败: ' . $e->getMessage(), 'ERROR');
                 }
                 @unlink($file);
             }
@@ -680,7 +680,7 @@ class CommentAI_ReplyManager
                     $this->processBatch($file);
                     CommentAI_Plugin::log('已处理批量任务: 游客=' . $data['visitorAuthor'] . ', 文章=' . $data['postId'] . ', 评论数=' . count($data['comments']));
                 } catch (Exception $e) {
-                    CommentAI_Plugin::log('处理批量任务失败: ' . $e->getMessage());
+                    CommentAI_Plugin::log('处理批量任务失败: ' . $e->getMessage(), 'ERROR');
                 }
             }
         }

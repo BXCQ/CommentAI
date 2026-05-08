@@ -84,6 +84,11 @@ if ($do && Typecho_Widget::widget('Widget_User')->pass('administrator', true)) {
                     }
                 }
                 break;
+
+            case 'clear_log':
+                CommentAI_Plugin::clearLog();
+                Typecho_Widget::widget('Widget_Notice')->set('✅ 日志已清空', 'success');
+                break;
         }
     } catch (Exception $e) {
         Typecho_Widget::widget('Widget_Notice')->set('❌ 操作失败: ' . $e->getMessage(), 'error');
@@ -591,6 +596,47 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
             </div>
         <?php endforeach; ?>
     <?php endif; ?>
+
+    <!-- 日志查看 -->
+    <div style="margin-top:40px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+            <h3 style="margin:0;border-bottom:2px solid #467b96;padding-bottom:5px;display:inline-block;">📋 运行日志</h3>
+            <div style="display:flex;gap:10px;">
+                <a href="<?php echo Helper::options()->adminUrl . 'extending.php?panel=CommentAI%2Fpanel.php'; ?>"
+                   class="btn btn-refresh" style="font-size:12px;padding:6px 12px;">
+                    刷新日志
+                </a>
+                <a href="<?php echo Helper::security()->getTokenUrl(Helper::options()->adminUrl . 'extending.php?panel=CommentAI%2Fpanel.php&do=clear_log'); ?>"
+                   class="btn btn-clean" style="font-size:12px;padding:6px 12px;"
+                   onclick="return confirm('确定要清空所有日志吗？');">
+                    清空日志
+                </a>
+            </div>
+        </div>
+        <?php
+        $logContent = CommentAI_Plugin::readLog(200);
+        if (empty($logContent)):
+        ?>
+            <div style="background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:30px;text-align:center;color:#999;">
+                暂无日志记录
+            </div>
+        <?php else: ?>
+            <div style="background:#1e1e1e;color:#d4d4d4;border-radius:6px;padding:15px;font-family:Consolas,'Courier New',monospace;font-size:13px;line-height:1.6;max-height:500px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"><?php
+                $lines = explode("\n", $logContent);
+                foreach ($lines as $line) {
+                    if (strpos($line, '[ERROR]') !== false) {
+                        echo '<span style="color:#f44747;">' . htmlspecialchars($line) . "</span>\n";
+                    } elseif (strpos($line, '[WARN]') !== false) {
+                        echo '<span style="color:#dcdcaa;">' . htmlspecialchars($line) . "</span>\n";
+                    } elseif (strpos($line, '[INFO]') !== false) {
+                        echo '<span style="color:#4ec9b0;">' . htmlspecialchars($line) . "</span>\n";
+                    } else {
+                        echo htmlspecialchars($line) . "\n";
+                    }
+                }
+            ?></div>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php

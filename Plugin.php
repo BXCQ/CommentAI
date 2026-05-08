@@ -470,7 +470,7 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
             $manager->processComment($commentData);
         } catch (Exception $e) {
             // 静默失败，不影响评论提交
-            self::log('AI回复处理失败: ' . $e->getMessage());
+            self::log('AI回复处理失败: ' . $e->getMessage(), 'ERROR');
         }
     }
 
@@ -502,12 +502,58 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
 
     /**
      * 日志记录
+     *
+     * @param string $message 日志内容
+     * @param string $level 日志级别：INFO / WARN / ERROR
      */
-    public static function log($message)
+    public static function log($message, $level = 'INFO')
     {
         $logFile = __DIR__ . '/runtime.log';
+        $maxSize = 2 * 1024 * 1024; // 2MB 轮转
+
+        // 超过大小限制时轮转
+        if (file_exists($logFile) && filesize($logFile) > $maxSize) {
+            $backupFile = __DIR__ . '/runtime.log.1';
+            @rename($logFile, $backupFile);
+        }
+
         $time = date('Y-m-d H:i:s');
-        $logMessage = "[{$time}] {$message}\n";
+        $logMessage = "[{$time}] [{$level}] {$message}\n";
         @file_put_contents($logFile, $logMessage, FILE_APPEND);
+    }
+
+    /**
+     * 读取日志内容
+     *
+     * @param int $lines 读取最后N行
+     * @return string
+     */
+    public static function readLog($lines = 200)
+    {
+        $logFile = __DIR__ . '/runtime.log';
+        if (!file_exists($logFile)) {
+            return '';
+        }
+
+        $content = file($logFile, FILE_IGNORE_NEW_LINES);
+        if ($content === false) {
+            return '';
+        }
+
+        $content = array_slice($content, -$lines);
+        return implode("\n", $content);
+    }
+
+    /**
+     * 清空日志
+     */
+    public static function clearLog()
+    {
+        $logFile = __DIR__ . '/runtime.log';
+        @file_put_contents($logFile, '');
+        $backupFile = __DIR__ . '/runtime.log.1';
+        if (file_exists($backupFile)) {
+            @unlink($backupFile);
+        }
     }
 }
