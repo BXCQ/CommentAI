@@ -218,9 +218,9 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
         $batchWindow = new Typecho_Widget_Helper_Form_Element_Text(
             'batchWindow',
             NULL,
-            '60',
-            _t('游客评论收集窗口（秒）'),
-            _t('同一游客在同一篇文章下的多条评论在该时间窗口内合并为一次API调用，大幅节省token消耗。建议30-120秒，0为禁用（逐条处理）')
+            '1',
+            _t('评论合并处理'),
+            _t('同一游客在同一篇文章下的多条评论即时合并为一次API调用，节省token消耗。1为启用，0为禁用（逐条处理）')
         );
         $form->addInput($batchWindow);
 

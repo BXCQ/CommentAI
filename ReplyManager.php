@@ -41,13 +41,12 @@ class CommentAI_ReplyManager
             throw new Exception('文章不存在');
         }
 
-        // 检查是否启用批量模式
+        // 检查是否启用批量合并模式
         $batchWindow = intval($this->config->batchWindow ?: 0);
 
         if (!$skipDelay && $batchWindow > 0) {
-            // 批量收集模式
-            CommentAI_Plugin::log('批量模式：收集评论到批量队列，窗口 ' . $batchWindow . ' 秒');
-            $this->collectComment($comment, $post, $batchWindow);
+            // 即时合并处理模式
+            $this->mergeAndProcessComment($comment, $post);
             return;
         }
 
@@ -269,13 +268,9 @@ class CommentAI_ReplyManager
     }
 
     /**
-     * 收集评论到批量队列（按游客+文章分组）
-     *
-     * @param object $comment 评论详情
-     * @param object $post 文章详情
-     * @param int $batchWindow 批量窗口（秒）
+     * 即时合并处理：有批次则合并处理，无批次则立即处理+创建批次文件
      */
-    private function collectComment($comment, $post, $batchWindow)
+    private function mergeAndProcessComment($comment, $post)
     {
         // 低价值评论不进入批量队列，直接处理
         if ($this->isLowValueComment($comment->text)) {
@@ -283,6 +278,41 @@ class CommentAI_ReplyManager
             return;
         }
 
+        $visitorKey = $this->getVisitorKey($comment);
+        $batchFile = __DIR__ . '/batch_' . $visitorKey . '_' . $comment->cid . '.json';
+
+        if (!file_exists($batchFile)) {
+            // 无批次文件：立即处理 + 创建文件供后续评论合并
+            $this->triggerBackgroundProcess();
+            $this->processSingleComment($comment, $post);
+            $this->collectComment($comment, $post);
+            return;
+        }
+
+        // 有批次文件：追加当前评论 → 删除文件 → 立即合并处理
+        $this->collectComment($comment, $post);
+
+        // 读取并原子占有批次文件
+        $batchData = json_decode(file_get_contents($batchFile), true);
+        @unlink($batchFile);
+
+        if (!$batchData || empty($batchData['comments'])) {
+            return;
+        }
+
+        CommentAI_Plugin::log('即时合并处理: 游客=' . $comment->author . ', 文章=' . $comment->cid . ', 评论数=' . count($batchData['comments']));
+
+        $this->processBatchData($batchData);
+    }
+
+    /**
+     * 收集评论到批量队列（按游客+文章分组）
+     *
+     * @param object $comment 评论详情
+     * @param object $post 文章详情
+     */
+    private function collectComment($comment, $post)
+    {
         $visitorKey = $this->getVisitorKey($comment);
         $batchFile = __DIR__ . '/batch_' . $visitorKey . '_' . $comment->cid . '.json';
         $now = time();
@@ -317,15 +347,9 @@ class CommentAI_ReplyManager
             'chain' => $chain
         );
 
-        // 更新收集时间（每次新评论延长窗口）
-        $batchData['collectTime'] = $now;
-
         file_put_contents($batchFile, json_encode($batchData, JSON_UNESCAPED_UNICODE));
 
         CommentAI_Plugin::log('已收集评论到批量队列: 游客=' . $comment->author . ', 文章=' . $comment->cid . ', coid=' . $comment->coid . ', 当前批次共 ' . count($batchData['comments']) . ' 条');
-
-        // 触发后台处理
-        $this->triggerBackgroundProcess();
     }
 
     /**
@@ -341,18 +365,41 @@ class CommentAI_ReplyManager
             return;
         }
 
+        @unlink($batchFile);
+        $this->processBatchData($batchData);
+    }
+
+    /**
+     * 处理批量评论数据（核心逻辑）
+     *
+     * @param array $batchData 批量评论数据
+     */
+    private function processBatchData($batchData)
+    {
         $comments = $batchData['comments'];
         $postId = $batchData['postId'];
         $postTitle = $batchData['postTitle'];
         $postExcerpt = $batchData['postExcerpt'];
         $visitorAuthor = $batchData['visitorAuthor'];
 
-        CommentAI_Plugin::log('处理批量评论: 游客=' . $visitorAuthor . ', 文章=' . $postId . ', 评论数=' . count($comments));
+        // 过滤已在队列中的评论（避免重复处理）
+        $pendingComments = array();
+        foreach ($comments as $c) {
+            if (!$this->isInQueue($c['coid'])) {
+                $pendingComments[] = $c;
+            }
+        }
+
+        if (empty($pendingComments)) {
+            CommentAI_Plugin::log('批量评论全部已在队列中，跳过: 游客=' . $visitorAuthor . ', 文章=' . $postId);
+            return;
+        }
+
+        CommentAI_Plugin::log('处理批量评论: 游客=' . $visitorAuthor . ', 文章=' . $postId . ', 待处理=' . count($pendingComments) . '/' . count($comments));
 
         // 只有1条评论时，退化为单条处理
-        if (count($comments) === 1) {
-            @unlink($batchFile);
-            $comment = $this->getCommentDetails($comments[0]['coid']);
+        if (count($pendingComments) === 1) {
+            $comment = $this->getCommentDetails($pendingComments[0]['coid']);
             $post = $this->getPostDetails($postId);
             if ($comment && $post) {
                 $this->processSingleComment($comment, $post);
@@ -365,11 +412,11 @@ class CommentAI_ReplyManager
         $provider = CommentAI_AIService::create($this->config);
 
         try {
-            $results = $provider->generateBatchReplies($postTitle, $postExcerpt, $comments);
+            $results = $provider->generateBatchReplies($postTitle, $postExcerpt, $pendingComments);
 
             // 逐条保存结果
             $coidMap = array();
-            foreach ($comments as $c) {
+            foreach ($pendingComments as $c) {
                 $coidMap[$c['coid']] = $c;
             }
 
@@ -416,7 +463,7 @@ class CommentAI_ReplyManager
             CommentAI_Plugin::log('批量处理失败，降级为逐条处理: ' . $e->getMessage(), 'ERROR');
 
             // Fallback：逐条处理
-            foreach ($comments as $c) {
+            foreach ($pendingComments as $c) {
                 try {
                     $comment = $this->getCommentDetails($c['coid']);
                     $post = $this->getPostDetails($postId);
@@ -428,8 +475,18 @@ class CommentAI_ReplyManager
                 }
             }
         }
+    }
 
-        @unlink($batchFile);
+    /**
+     * 检查评论是否已在队列中
+     */
+    private function isInQueue($coid)
+    {
+        $existing = $this->db->fetchRow($this->db->select()
+            ->from($this->prefix . 'comment_ai_queue')
+            ->where('cid = ?', $coid)
+        );
+        return !empty($existing);
     }
 
     // ==================== 数据库操作 ====================
@@ -662,7 +719,7 @@ class CommentAI_ReplyManager
             }
         }
 
-        // 2. 处理批量任务
+        // 2. 处理批量任务（3秒兜底窗口，处理孤立的批次文件）
         $batchFiles = glob(__DIR__ . '/batch_*.json');
         foreach ($batchFiles as $file) {
             $data = json_decode(file_get_contents($file), true);
@@ -672,15 +729,13 @@ class CommentAI_ReplyManager
                 continue;
             }
 
-            $batchWindow = intval($this->config->batchWindow ?: 60);
-
-            // 收集窗口到期，处理这批评论
-            if ($data['collectTime'] + $batchWindow <= $now) {
+            // 3秒兜底窗口到期，处理这批评论
+            if ($data['collectTime'] + 3 <= $now) {
                 try {
                     $this->processBatch($file);
-                    CommentAI_Plugin::log('已处理批量任务: 游客=' . $data['visitorAuthor'] . ', 文章=' . $data['postId'] . ', 评论数=' . count($data['comments']));
+                    CommentAI_Plugin::log('已处理兜底批量任务: 游客=' . $data['visitorAuthor'] . ', 文章=' . $data['postId'] . ', 评论数=' . count($data['comments']));
                 } catch (Exception $e) {
-                    CommentAI_Plugin::log('处理批量任务失败: ' . $e->getMessage(), 'ERROR');
+                    CommentAI_Plugin::log('处理兜底批量任务失败: ' . $e->getMessage(), 'ERROR');
                 }
             }
         }
