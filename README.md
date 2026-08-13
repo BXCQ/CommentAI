@@ -4,7 +4,7 @@
 
 让 AI 成为你的评论助手，自动生成高质量的回复内容
 
-[![Typecho](https://img.shields.io/badge/Typecho-1.2%2B-blue.svg)](http://typecho.org)
+[![Typecho](https://img.shields.io/badge/Typecho-1.2.1%20%7C%201.3.0-blue.svg)](http://typecho.org)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-purple.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -14,20 +14,26 @@
 
 ## 功能特性
 
-### 多种工作模式
+### 工作模式
 
 - 全自动模式：AI 生成后直接发布
 - 人工审核模式：生成后需后台审核（推荐）
-- 仅建议模式：仅显示建议，不自动发布
 
 ### 多平台 AI 支持
 
 - 阿里云百炼（通义千问 Qwen）
-- OpenAI（ChatGPT）
+- OpenAI（GPT-5 等，自动使用 `max_completion_tokens`）
 - DeepSeek
 - Kimi（月之暗面）
+- 智谱 GLM
+- 火山引擎（豆包）
+- 硅基流动 SiliconFlow
 - Google Gemini
 - Anthropic Claude
+- OpenRouter
+- Groq
+- xAI Grok
+- Ollama（本地）
 - 自定义 OpenAI 兼容接口
 
 ### 上下文感知
@@ -36,39 +42,28 @@
 - 完整评论链追溯（向上追溯最多 10 层，区分人工回复与 AI 回复）
 - 根据语境生成个性化回复
 
-### 批量合并优化
-
-- 同一游客在同一篇文章下的多条评论，在时间窗口内合并为一次 API 调用
-- 文章内容只发送一次，大幅节省 token 消耗
-- 窗口到期只有 1 条评论时自动退化为单条处理
-- 批量解析失败时自动逐条 fallback
-
 ### 低价值评论过滤
 
 - 关键词完全匹配 + 纯数字短内容检测（如 "1"、"666"）
-- 两种处理方式可选：
-  - 跳过模式：不调用 AI，使用自定义固定回复
-  - 精简模式：只发送文章摘要给 AI，节省 token
-- 批量队列自动过滤低价值评论，不占用 API 配额
+- 命中后使用自定义固定回复，不调用 AI
 
 ### 安全防护
 
 - 内置敏感词过滤
 - API 调用频率限制
-- 防止垃圾评论触发
-- 仅对已审核评论回复
+- 始终忽略 trackback / pingback
+- 仅对已审核评论回复（待审评论在后台通过后才会生成）
 
 ### 透明化显示
 
 - 可选 AI 标识（如 `🤖 AI辅助回复`）
 - 符合伦理透明性原则
 
-### 完善的管理后台
+### 管理后台
 
 - 可视化审核队列
-- 一键发布/拒绝/重新生成
-- 统计数据展示
-- 批量操作支持
+- 一键发布 / 拒绝 / 重新生成
+- 统计数据与运行日志
 
 ---
 
@@ -79,17 +74,17 @@
 | 配置项 | 说明 |
 |--------|------|
 | 插件开关 | 启用/禁用插件 |
-| 回复模式 | 全自动 / 人工审核 / 仅建议 |
+| 回复模式 | 全自动 / 人工审核 |
 | 管理员 UID | AI 回复将以该用户身份发布 |
 
 ### AI 平台配置
 
 | 配置项 | 说明 |
 |--------|------|
-| AI 服务提供商 | 阿里云 / OpenAI / DeepSeek / Kimi / Gemini / Claude / 自定义 |
-| API Key | AI 服务的 API 密钥 |
+| AI 服务提供商 | 见上方平台列表 |
+| API Key | AI 服务密钥（Ollama 可留空） |
 | API 地址 | 自定义端点，留空使用各平台默认地址 |
-| 模型名称 | 如 `qwen-plus`、`gpt-4o-mini`、`deepseek-chat`、`gemini-2.0-flash`、`claude-sonnet-4-20250514` |
+| 模型名称 | 如 `qwen-plus`、`gpt-5-mini`、`deepseek-chat`、`kimi-k2`、`glm-4.5`、`gemini-2.5-flash`、`claude-sonnet-5` |
 
 ### Prompt 配置
 
@@ -106,17 +101,14 @@
 | 最大 Token 数 | 单次回复最大长度，建议 200-500 |
 | 敏感词过滤 | 每行一个，AI 回复包含则拦截 |
 | 每小时最大调用次数 | 防止 API 费用失控，0 为不限制 |
-| 回复延迟（秒） | 延迟回复更自然，建议 30-120，0 为立即 |
-| 游客评论收集窗口（秒） | 同一游客+同一篇文章的多条评论合并为一次调用，建议 30-120，0 为禁用 |
 
 ### 低价值评论过滤
 
 | 配置项 | 说明 |
 |--------|------|
-| 低价值评论检测 | 启用/禁用 |
-| 低价值关键词 | 每行一个，评论完全匹配时触发（如 1、看看、感谢） |
-| 处理方式 | 跳过（使用固定回复）/ 精简调用（只发文章摘要） |
-| 跳过模式的固定回复 | 自定义回复内容，支持 HTML |
+| 低价值评论检测 | 启用后命中关键词则使用固定回复，不调用 AI |
+| 低价值关键词 | 每行一个，评论完全匹配时触发 |
+| 固定回复 | 自定义回复内容，支持 HTML |
 
 ### 显示设置
 
@@ -129,30 +121,38 @@
 
 | 配置项 | 说明 |
 |--------|------|
-| 仅对已审核的评论回复 | 跳过未审核评论 |
+| 仅对已审核的评论回复 | 待审评论在后台点「通过」后才会生成 AI 回复 |
 | 忽略垃圾评论 | 跳过 spam 状态评论 |
-| 忽略引用和 trackback | 跳过 pingback/trackback 类型 |
-| 仅对文章的第一条评论回复 | 只回复首条评论 |
 
 ---
 
 ## 运行逻辑
 
+兼容 Typecho 1.2.1 与 1.3.0：
+
 ```
-访客评论 → 钩子触发 → 条件过滤 → 频率检查
+访客评论 → Widget_Feedback::finishComment
+后台回复 → Widget_Comments_Edit::finishComment
+后台通过 → Widget_Comments_Edit::mark
                 │
-                ├── 批量模式 → 按游客+文章收集 → 窗口到期 → 一次 API 调用
+        条件过滤（管理员 / 未审核 / spam / 频率）
                 │
-                └── 单条模式 → 构建上下文（含评论链） → 一次 API 调用
-                                ↓
-                        敏感词过滤
-                                ↓
-                 auto → 直接发布
-                 audit → 入队列 pending（待审核）
-                 suggest → 入队列 suggest（仅建议）
-                                ↓
-                  后台面板：发布/拒绝/重新生成/清理
+        写入计划任务（不阻塞评论提交）
+                │
+        Typecho 1.3：Helper::requestService
+        Typecho 1.2.1：HTTPS 短超时 curl
+                │
+        构建上下文（含评论链） → 调用 AI
+                │
+        敏感词过滤
+                │
+        auto → 直接发布
+        audit → 入队列 pending（待审核）
+                │
+        后台面板：发布 / 拒绝 / 重新生成
 ```
+
+AI 回复写入评论表时，`ownerId` 为文章作者，`created` 使用站点时区时间，评论数使用原子递增，与 Typecho 核心行为一致。
 
 ---
 
@@ -169,16 +169,16 @@
 ```
 CommentAI/
 ├── Plugin.php              # 插件主文件（钩子注册、配置面板）
-├── AIService.php           # AI 服务工厂（按配置创建对应 Provider）
-├── ReplyManager.php        # 回复管理器（批量处理、评论链、队列管理）
+├── AIService.php           # AI 服务工厂
+├── ReplyManager.php        # 回复管理器（异步调度、评论链、队列）
 ├── Action.php              # 后台动作处理器
 ├── panel.php               # 后台管理面板
 ├── install.sql             # 手动建表 SQL
 ├── providers/
 │   ├── BaseProvider.php    # Provider 抽象基类
-│   ├── OpenAIProvider.php  # OpenAI 兼容适配器（阿里云/DeepSeek/Kimi/自定义）
-│   ├── GeminiProvider.php  # Google Gemini 原生 API 适配器
-│   └── ClaudeProvider.php  # Anthropic Claude 原生 API 适配器
+│   ├── OpenAIProvider.php  # OpenAI 兼容适配器
+│   ├── GeminiProvider.php  # Google Gemini 原生 API
+│   └── ClaudeProvider.php  # Anthropic Claude 原生 API
 ```
 
 ---

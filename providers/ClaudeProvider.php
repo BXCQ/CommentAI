@@ -19,7 +19,7 @@ class CommentAI_ClaudeProvider extends CommentAI_BaseProvider
     {
         parent::__construct($config);
         $this->apiKey = $config->apiKey;
-        $this->modelName = $config->modelName ?: 'claude-sonnet-4-20250514';
+        $this->modelName = $config->modelName ?: 'claude-sonnet-5';
         $this->apiEndpoint = !empty($config->apiEndpoint)
             ? rtrim($config->apiEndpoint, '/')
             : 'https://api.anthropic.com';

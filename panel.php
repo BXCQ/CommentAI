@@ -78,7 +78,7 @@ if ($do && Typecho_Widget::widget('Widget_User')->pass('administrator', true)) {
                                 'type' => $comment['type'],
                                 'parent' => $comment['parent'],
                                 'cid' => $comment['cid']
-                            ));
+                            ), true);
                             Typecho_Widget::widget('Widget_Notice')->set('✅ 已重新生成回复', 'success');
                         }
                     }
@@ -328,7 +328,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
 .status-badge.published { background: #d4edda; color: #155724; }
 .status-badge.rejected { background: #f8d7da; color: #721c24; }
 .status-badge.error { background: #f8d7da; color: #721c24; }
-.status-badge.suggest { background: #d1ecf1; color: #0c5460; }
 
 /* 内容框 */
 .comment-box, .reply-box {
@@ -426,10 +425,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
             <div class="label">已拒绝</div>
             <div class="number"><?php echo $stats['rejected']; ?></div>
         </div>
-        <div class="stat-card">
-            <div class="label">仅建议</div>
-            <div class="number"><?php echo $stats['suggest']; ?></div>
-        </div>
         <div class="stat-card error">
             <div class="label">错误</div>
             <div class="number"><?php echo $stats['error']; ?></div>
@@ -483,9 +478,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
         <a href="?panel=CommentAI%2Fpanel.php&status=rejected" class="<?php echo $statusFilter == 'rejected' ? 'active' : ''; ?>">
             已拒绝 (<?php echo $stats['rejected']; ?>)
         </a>
-        <a href="?panel=CommentAI%2Fpanel.php&status=suggest" class="<?php echo $statusFilter == 'suggest' ? 'active' : ''; ?>">
-            仅建议 (<?php echo $stats['suggest']; ?>)
-        </a>
         <a href="?panel=CommentAI%2Fpanel.php&status=error" class="<?php echo $statusFilter == 'error' ? 'active' : ''; ?>">
             错误 (<?php echo $stats['error']; ?>)
         </a>
@@ -533,7 +525,6 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
                                 'pending' => '⏳ 待审核',
                                 'published' => '✅ 已发布',
                                 'rejected' => '❌ 已拒绝',
-                                'suggest' => '💡 仅建议',
                                 'error' => '⚠️ 错误'
                             );
                             echo isset($statusText[$item->status]) ? $statusText[$item->status] : $item->status;
@@ -563,7 +554,7 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
                 </div>
 
                 <div class="action-buttons">
-                    <?php if ($item->status == 'pending' || $item->status == 'suggest'): ?>
+                    <?php if ($item->status == 'pending'): ?>
                         <a href="<?php echo Helper::security()->getTokenUrl(Helper::options()->adminUrl . 'extending.php?panel=CommentAI%2Fpanel.php&do=publish&id=' . $item->id); ?>" 
                            class="btn btn-success" 
                            onclick="return confirm('确定要发布这条AI回复吗？');">

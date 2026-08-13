@@ -1,7 +1,8 @@
 <?php
 /**
  * OpenAI 兼容接口适配器
- * 支持：OpenAI、阿里云百炼、DeepSeek、Kimi、自定义兼容接口
+ * 支持：OpenAI、阿里云百炼、DeepSeek、Kimi、智谱、豆包、硅基流动、
+ *      OpenRouter、Groq、xAI、Ollama、自定义兼容接口
  *
  * @package CommentAI
  */
@@ -42,6 +43,20 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
                 return 'https://api.deepseek.com/v1';
             case 'kimi':
                 return 'https://api.moonshot.cn/v1';
+            case 'zhipu':
+                return 'https://open.bigmodel.cn/api/paas/v4';
+            case 'volcengine':
+                return 'https://ark.cn-beijing.volces.com/api/v3';
+            case 'siliconflow':
+                return 'https://api.siliconflow.cn/v1';
+            case 'openrouter':
+                return 'https://openrouter.ai/api/v1';
+            case 'groq':
+                return 'https://api.groq.com/openai/v1';
+            case 'xai':
+                return 'https://api.x.ai/v1';
+            case 'ollama':
+                return 'http://127.0.0.1:11434/v1';
             case 'custom':
                 throw new Exception('使用自定义接口时必须填写API地址');
             default:
@@ -50,24 +65,51 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
     }
 
     /**
+     * GPT-5 / o-series 等推理模型不再接受 max_tokens
+     */
+    private function useMaxCompletionTokens()
+    {
+        if ($this->config->aiProvider === 'openai') {
+            return true;
+        }
+
+        $model = strtolower($this->modelName ?: '');
+        return (bool)preg_match('/^(gpt-5|o1|o3|o4)/', $model);
+    }
+
+    /**
      * 发送消息
      */
     public function sendMessages($messages)
     {
         $url = $this->apiEndpoint . '/chat/completions';
+        $maxTokens = intval($this->config->maxTokens ?: 300);
 
         $requestBody = array(
             'model' => $this->modelName,
             'messages' => $messages,
             'temperature' => floatval($this->config->temperature ?: 0.7),
-            'max_tokens' => intval($this->config->maxTokens ?: 300),
             'stream' => false
         );
 
+        if ($this->useMaxCompletionTokens()) {
+            $requestBody['max_completion_tokens'] = $maxTokens;
+        } else {
+            $requestBody['max_tokens'] = $maxTokens;
+        }
+
         $headers = array(
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $this->apiKey
+            'Content-Type: application/json'
         );
+
+        if (!empty($this->apiKey)) {
+            $headers[] = 'Authorization: Bearer ' . $this->apiKey;
+        }
+
+        if ($this->config->aiProvider === 'openrouter') {
+            $headers[] = 'HTTP-Referer: ' . Helper::options()->siteUrl;
+            $headers[] = 'X-Title: CommentAI';
+        }
 
         $result = $this->httpPost($url, $headers, json_encode($requestBody));
 

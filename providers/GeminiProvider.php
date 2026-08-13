@@ -18,7 +18,7 @@ class CommentAI_GeminiProvider extends CommentAI_BaseProvider
     {
         parent::__construct($config);
         $this->apiKey = $config->apiKey;
-        $this->modelName = $config->modelName ?: 'gemini-2.0-flash';
+        $this->modelName = $config->modelName ?: 'gemini-2.5-flash';
     }
 
     /**
@@ -43,6 +43,13 @@ class CommentAI_GeminiProvider extends CommentAI_BaseProvider
                 'maxOutputTokens' => intval($this->config->maxTokens ?: 300),
             )
         );
+
+        // Gemini 2.5+ 默认会消耗 thinking token，评论回复关闭思考以保留输出额度
+        if (preg_match('/gemini-2\.[5-9]|gemini-[3-9]/i', $this->modelName)) {
+            $requestBody['generationConfig']['thinkingConfig'] = array(
+                'thinkingBudget' => 0
+            );
+        }
 
         // Gemini 的 systemInstruction 是单独字段
         if (!empty($geminiMessages['systemInstruction'])) {
