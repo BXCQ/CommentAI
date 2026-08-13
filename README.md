@@ -12,58 +12,53 @@
 
 ---
 
+## 环境要求
+
+- Typecho **1.2.1** 或 **1.3.0**
+- PHP **8.0+**，需开启 `curl` 扩展
+- MySQL 5.7+/8.0+ 或 SQLite
+
+---
+
+## 安装
+
+1. 将本仓库下载或克隆到 Typecho 插件目录，文件夹名必须为 `CommentAI`：
+
+```
+usr/plugins/CommentAI/
+```
+
+2. 登录后台 → 控制台 → 插件，启用 **CommentAI**
+3. 进入插件设置，选择 AI 平台并填写 API Key、模型名称
+4. 建议先用管理面板里的「测试连接」，确认接口可用后再打开全自动回复
+
+---
+
+## 从 1.3.0 升级到 1.4.0
+
+数据库表结构没有变化，旧队列数据可继续使用。但 **必须先禁用再启用插件**，否则新钩子不会生效。
+
+1. 后台禁用 CommentAI，再重新启用
+2. 打开插件设置，确认 AI 平台和模型后保存一次
+3. 以下配置已移除，保存后会自动忽略，无需手动清理：
+   - 批量合并（`batchWindow`）
+   - 回复延迟（`replyDelay`）
+   - 仅建议模式
+   - 仅对文章第一条评论回复
+   - 低价值评论的「精简调用」
+   - 忽略 trackback 开关（现已默认忽略引用类型）
+
+---
+
 ## 功能特性
 
-### 工作模式
-
-- 全自动模式：AI 生成后直接发布
-- 人工审核模式：生成后需后台审核（推荐）
-
-### 多平台 AI 支持
-
-- 阿里云百炼（通义千问 Qwen）
-- OpenAI（GPT-5 等，自动使用 `max_completion_tokens`）
-- DeepSeek
-- Kimi（月之暗面）
-- 智谱 GLM
-- 火山引擎（豆包）
-- 硅基流动 SiliconFlow
-- Google Gemini
-- Anthropic Claude
-- OpenRouter
-- Groq
-- xAI Grok
-- Ollama（本地）
-- 自定义 OpenAI 兼容接口
-
-### 上下文感知
-
-- 读取文章标题和摘要
-- 完整评论链追溯（向上追溯最多 10 层，区分人工回复与 AI 回复）
-- 根据语境生成个性化回复
-
-### 低价值评论过滤
-
-- 关键词完全匹配 + 纯数字短内容检测（如 "1"、"666"）
-- 命中后使用自定义固定回复，不调用 AI
-
-### 安全防护
-
-- 内置敏感词过滤
-- API 调用频率限制
-- 始终忽略 trackback / pingback
-- 仅对已审核评论回复（待审评论在后台通过后才会生成）
-
-### 透明化显示
-
-- 可选 AI 标识（如 `🤖 AI辅助回复`）
-- 符合伦理透明性原则
-
-### 管理后台
-
-- 可视化审核队列
-- 一键发布 / 拒绝 / 重新生成
-- 统计数据与运行日志
+- **全自动 / 人工审核**：生成后直接发布，或先进入后台队列
+- **多平台接入**：阿里云百炼、OpenAI、DeepSeek、Kimi、智谱 GLM、火山引擎豆包、硅基流动、Gemini、Claude、OpenRouter、Groq、xAI Grok、Ollama、自定义 OpenAI 兼容接口
+- **上下文感知**：文章标题、摘要、最多 10 层评论链
+- **低价值过滤**：命中「感谢」「666」等关键词时使用固定回复，不消耗 API
+- **审核后回复**：开启「仅对已审核的评论回复」时，后台点「通过」才会生成
+- **不阻塞评论**：访客提交后立刻返回，AI 在后台生成
+- **管理面板**：审核队列、发布 / 拒绝 / 重新生成、运行日志
 
 ---
 
@@ -81,17 +76,35 @@
 
 | 配置项 | 说明 |
 |--------|------|
-| AI 服务提供商 | 见上方平台列表 |
+| AI 服务提供商 | 见下方平台与模型示例 |
 | API Key | AI 服务密钥（Ollama 可留空） |
 | API 地址 | 自定义端点，留空使用各平台默认地址 |
-| 模型名称 | 如 `qwen-plus`、`gpt-5-mini`、`deepseek-chat`、`kimi-k2`、`glm-4.5`、`gemini-2.5-flash`、`claude-sonnet-5` |
+| 模型名称 | 必须填写平台对应的模型标识 |
+
+| 平台 | 默认 API 地址 | 模型示例 |
+|------|----------------|----------|
+| 阿里云百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-5-mini` |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| Kimi | `https://api.moonshot.cn/v1` | `kimi-k2` |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4.5` |
+| 火山引擎豆包 | `https://ark.cn-beijing.volces.com/api/v3` | 控制台中的接入点 ID |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen3-8B` |
+| Google Gemini | Gemini 原生接口 | `gemini-2.5-flash` |
+| Anthropic Claude | `https://api.anthropic.com` | `claude-sonnet-5` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `openai/gpt-5-mini` |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
+| xAI Grok | `https://api.x.ai/v1` | `grok-4` |
+| Ollama | `http://127.0.0.1:11434/v1` | `llama3.2` |
+
+OpenAI 的 GPT-5 等推理模型会自动改用 `max_completion_tokens`，国内兼容接口仍发送 `max_tokens`。Gemini 2.5 会关闭 thinking，避免思考 token 占满输出额度。
 
 ### Prompt 配置
 
 | 配置项 | 说明 |
 |--------|------|
 | 系统提示词 | 定义 AI 的角色和回复风格 |
-| 上下文信息 | 可选：文章标题、文章摘要（前 300 字）、父级评论（含完整评论链追溯） |
+| 上下文信息 | 可选：文章标题、文章摘要（前 300 字）、父级评论（含完整评论链） |
 
 ### 高级配置
 
@@ -124,43 +137,30 @@
 | 仅对已审核的评论回复 | 待审评论在后台点「通过」后才会生成 AI 回复 |
 | 忽略垃圾评论 | 跳过 spam 状态评论 |
 
+引用（trackback / pingback）始终忽略。管理员自己的评论也不会触发 AI。
+
 ---
 
-## 运行逻辑
-
-兼容 Typecho 1.2.1 与 1.3.0：
+## 工作流程
 
 ```
-访客评论 → Widget_Feedback::finishComment
-后台回复 → Widget_Comments_Edit::finishComment
-后台通过 → Widget_Comments_Edit::mark
-                │
-        条件过滤（管理员 / 未审核 / spam / 频率）
-                │
-        写入计划任务（不阻塞评论提交）
-                │
-        Typecho 1.3：Helper::requestService
-        Typecho 1.2.1：HTTPS 短超时 curl
-                │
-        构建上下文（含评论链） → 调用 AI
-                │
-        敏感词过滤
-                │
-        auto → 直接发布
-        audit → 入队列 pending（待审核）
-                │
-        后台面板：发布 / 拒绝 / 重新生成
+访客发表评论
+    │
+    ├─ 未审核且开启了「仅已审核」→ 等待后台通过
+    ├─ 垃圾评论 / 引用 / 管理员评论 → 跳过
+    └─ 通过过滤 → 后台异步调用 AI（不卡住评论提交）
+                    │
+                    ├─ 全自动 → 直接以博主身份发布回复
+                    └─ 人工审核 → 进入插件面板，手动发布或拒绝
 ```
 
-AI 回复写入评论表时，`ownerId` 为文章作者，`created` 使用站点时区时间，评论数使用原子递增，与 Typecho 核心行为一致。
+兼容 Typecho 1.2.1 与 1.3.0：前台提交、后台回复、后台审核通过都会进入同一套处理。1.3.0 使用官方异步服务；1.2.1 使用支持 HTTPS 的短超时请求。
 
 ---
 
 ## 数据库
 
-插件自动创建 `comment_ai_queue` 表，支持 MySQL 5.7+/8.0+ 和 SQLite。表结构无变更，升级兼容旧版本数据。
-
-手动建表可执行 `install.sql`。
+插件启用时自动创建 `comment_ai_queue` 表，支持 MySQL 5.7+/8.0+ 和 SQLite。若自动建表失败，可手动执行 `install.sql`（按实际表前缀替换 `typecho_`）。
 
 ---
 
@@ -186,7 +186,3 @@ CommentAI/
 ## 开源协议
 
 本项目采用 [MIT License](LICENSE) 开源协议。
-
----
-
-如果觉得这个插件有用，请给个 Star 支持一下！
