@@ -4,6 +4,7 @@
 
 让 AI 成为你的评论助手，自动生成高质量的回复内容
 
+[![Plugin](https://img.shields.io/badge/CommentAI-1.4.0-orange.svg)](https://github.com/BXCQ/CommentAI)
 [![Typecho](https://img.shields.io/badge/Typecho-1.2.1%20%7C%201.3.0-blue.svg)](http://typecho.org)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-purple.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -34,7 +35,9 @@ usr/plugins/CommentAI/
 
 ---
 
-## 从 1.3.0 升级到 1.4.0
+## 从 CommentAI 1.3.0 升级（插件版本，不是 Typecho）
+
+这里的 1.3.0 / 1.4.0 是 **本插件** 版本，写在 `Plugin.php` 的 `@version` 里。Typecho 本身没有 1.4.0，博客程序仍只需 **1.2.1 或 1.3.0**。
 
 数据库表结构没有变化，旧队列数据可继续使用。但 **必须先禁用再启用插件**，否则新钩子不会生效。
 
