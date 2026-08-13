@@ -1,7 +1,7 @@
 <?php
 /**
  * 后台管理动作处理器
- * 
+ *
  * @package CommentAI
  */
 
@@ -23,12 +23,11 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
 
     public function action()
     {
-        // 处理计划任务不需要管理员权限
         if ($this->request->is('do=process_scheduled')) {
             $this->processScheduled();
             return;
         }
-        
+
         $this->widget('Widget_User')->pass('administrator');
         $this->on($this->request->is('do=test'))->testConnection();
         $this->on($this->request->is('do=publish'))->publishReply();
@@ -39,18 +38,29 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
         $this->on($this->request->is('do=clear_log'))->clearLog();
         $this->response->goBack();
     }
-    
+
     /**
      * 处理计划任务
      */
     public function processScheduled()
     {
+        $token = $this->request->get('token');
+        if ($token !== CommentAI_Plugin::asyncToken()) {
+            echo 'FORBIDDEN';
+            exit;
+        }
+
+        if (function_exists('ignore_user_abort')) {
+            ignore_user_abort(true);
+        }
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(60);
+        }
+
         try {
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $manager->processScheduledTasks();
-            
-            // 返回成功（不跳转）
             echo 'OK';
         } catch (Exception $e) {
             CommentAI_Plugin::log('处理计划任务失败: ' . $e->getMessage(), 'ERROR');
@@ -68,7 +78,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             require_once __DIR__ . '/AIService.php';
             $aiService = CommentAI_AIService::create($this->config);
             $result = $aiService->testConnection();
-            
+
             if ($result['success']) {
                 $this->widget('Widget_Notice')->set(
                     '✅ ' . $result['message'] . '<br><strong>测试回复：</strong>' . htmlspecialchars($result['reply']),
@@ -99,7 +109,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $manager->publishFromQueue($id);
-            
+
             $this->widget('Widget_Notice')->set('✅ 回复已发布', 'success');
         } catch (Exception $e) {
             $this->widget('Widget_Notice')->set('❌ 发布失败: ' . $e->getMessage(), 'error');
@@ -123,7 +133,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $manager->rejectFromQueue($id, '人工拒绝');
-            
+
             $this->widget('Widget_Notice')->set('✅ 已拒绝该回复', 'success');
         } catch (Exception $e) {
             $this->widget('Widget_Notice')->set('❌ 操作失败: ' . $e->getMessage(), 'error');
@@ -151,7 +161,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $result = $manager->batchProcess($ids, $action);
-            
+
             $this->widget('Widget_Notice')->set(
                 "✅ 批量操作完成：成功 {$result['success']} 条，失败 {$result['failed']} 条",
                 'success'
@@ -175,7 +185,6 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
         }
 
         try {
-            // 获取队列记录
             $queue = $this->db->fetchRow($this->db->select()
                 ->from($this->prefix . 'comment_ai_queue')
                 ->where('id = ?', $id)
@@ -185,29 +194,27 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
                 throw new Exception('队列记录不存在');
             }
 
-            // 获取评论信息
             $comment = $this->db->fetchRow($this->db->select()
                 ->from($this->prefix . 'comments')
-                ->where('coid = ?', $queue->cid)
+                ->where('coid = ?', $queue['cid'])
             );
 
             if (!$comment) {
                 throw new Exception('原评论不存在');
             }
 
-            // 重新生成
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $manager->processComment(array(
-                'coid' => $comment->coid,
-                'author' => $comment->author,
-                'text' => $comment->text,
-                'status' => $comment->status,
-                'type' => $comment->type,
-                'parent' => $comment->parent,
-                'cid' => $comment->cid
-            ));
-            
+                'coid' => $comment['coid'],
+                'author' => $comment['author'],
+                'text' => $comment['text'],
+                'status' => $comment['status'],
+                'type' => $comment['type'],
+                'parent' => $comment['parent'],
+                'cid' => $comment['cid']
+            ), true);
+
             $this->widget('Widget_Notice')->set('✅ 已重新生成回复', 'success');
         } catch (Exception $e) {
             $this->widget('Widget_Notice')->set('❌ 重新生成失败: ' . $e->getMessage(), 'error');
@@ -227,7 +234,7 @@ class CommentAI_Action extends Typecho_Widget implements Widget_Interface_Do
             require_once __DIR__ . '/ReplyManager.php';
             $manager = new CommentAI_ReplyManager($this->config);
             $manager->cleanOldQueue($days);
-            
+
             $this->widget('Widget_Notice')->set("✅ 已清理 {$days} 天前的旧记录", 'success');
         } catch (Exception $e) {
             $this->widget('Widget_Notice')->set('❌ 清理失败: ' . $e->getMessage(), 'error');

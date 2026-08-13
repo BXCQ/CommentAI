@@ -26,18 +26,25 @@ class CommentAI_AIService
         $provider = $config->aiProvider;
 
         switch ($provider) {
-            case 'aliyun':
-            case 'openai':
-            case 'deepseek':
-            case 'kimi':
-            case 'custom':
-                return new CommentAI_OpenAIProvider($config);
-
             case 'gemini':
                 return new CommentAI_GeminiProvider($config);
 
             case 'claude':
                 return new CommentAI_ClaudeProvider($config);
+
+            case 'aliyun':
+            case 'openai':
+            case 'deepseek':
+            case 'kimi':
+            case 'zhipu':
+            case 'volcengine':
+            case 'siliconflow':
+            case 'openrouter':
+            case 'groq':
+            case 'xai':
+            case 'ollama':
+            case 'custom':
+                return new CommentAI_OpenAIProvider($config);
 
             default:
                 throw new Exception('未知的AI服务提供商: ' . $provider);
