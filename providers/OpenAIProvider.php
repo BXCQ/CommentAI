@@ -83,7 +83,7 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
     public function sendMessages($messages)
     {
         $url = $this->apiEndpoint . '/chat/completions';
-        $maxTokens = intval($this->config->maxTokens ?: 300);
+        $maxTokens = intval($this->config->maxTokens ?: 1024);
 
         $requestBody = array(
             'model' => $this->modelName,
@@ -97,6 +97,8 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
         } else {
             $requestBody['max_tokens'] = $maxTokens;
         }
+
+        $this->disableThinking($requestBody);
 
         $headers = array(
             'Content-Type: application/json'
@@ -125,6 +127,26 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
     }
 
     /**
+     * 评论回复不需要深度思考：思考会占用 max_tokens，导致 content 为空
+     */
+    private function disableThinking(array &$requestBody)
+    {
+        $model = strtolower($this->modelName ?: '');
+
+        if (preg_match('/qwen3|qwq|qwen-plus|qwen-flash|qwen-turbo|qwen-long/i', $model)) {
+            $requestBody['enable_thinking'] = false;
+        }
+
+        if (preg_match('/glm-4\.5|glm-4\.6|glm-5|glm-4-plus/i', $model)) {
+            $requestBody['thinking'] = array('type' => 'disabled');
+        }
+
+        if (preg_match('/^(gpt-5|o1|o3|o4)/', $model)) {
+            $requestBody['reasoning_effort'] = 'low';
+        }
+    }
+
+    /**
      * 解析响应
      */
     private function parseResponse($response)
@@ -135,19 +157,76 @@ class CommentAI_OpenAIProvider extends CommentAI_BaseProvider
             throw new Exception('JSON解析失败: ' . json_last_error_msg());
         }
 
-        if (isset($data['choices'][0]['message']['content'])) {
-            return trim($data['choices'][0]['message']['content']);
+        $choice = isset($data['choices'][0]) ? $data['choices'][0] : null;
+        $message = ($choice && isset($choice['message'])) ? $choice['message'] : array();
+        $content = $this->extractMessageContent($message);
+
+        if ($content === '' && isset($data['output']['text'])) {
+            $content = trim((string)$data['output']['text']);
         }
 
-        if (isset($data['output']['text'])) {
-            return trim($data['output']['text']);
+        if ($content === '' && isset($data['result']) && !is_array($data['result'])) {
+            $content = trim((string)$data['result']);
         }
 
-        if (isset($data['result'])) {
-            return trim($data['result']);
+        if ($content !== '') {
+            return $content;
         }
 
-        throw new Exception('无法从响应中提取AI回复内容: ' . $response);
+        $finishReason = '';
+        if ($choice && !empty($choice['finish_reason'])) {
+            $finishReason = $choice['finish_reason'];
+        }
+
+        $hasReasoning = !empty($message['reasoning_content']) || !empty($message['reasoning']);
+        $hint = $hasReasoning || $finishReason === 'length'
+            ? '思考/推理占用了输出额度，请关闭思考模式或增大「最大Token数」'
+            : '请检查模型配置或增大「最大Token数」';
+
+        throw new Exception(
+            'AI返回空内容' .
+            ($finishReason !== '' ? "（finish_reason={$finishReason}）" : '') .
+            '，' . $hint
+        );
+    }
+
+    /**
+     * 从 message.content 提取纯文本（兼容空字符串、数组分片）
+     */
+    private function extractMessageContent($message)
+    {
+        if (!is_array($message) || !array_key_exists('content', $message)) {
+            return '';
+        }
+
+        $content = $message['content'];
+        if (is_string($content)) {
+            return trim($content);
+        }
+
+        if (!is_array($content)) {
+            return '';
+        }
+
+        $texts = array();
+        foreach ($content as $part) {
+            if (is_string($part)) {
+                $texts[] = $part;
+                continue;
+            }
+            if (!is_array($part)) {
+                continue;
+            }
+            $type = isset($part['type']) ? $part['type'] : '';
+            if (in_array($type, array('thinking', 'reasoning'), true)) {
+                continue;
+            }
+            if (isset($part['text']) && is_string($part['text'])) {
+                $texts[] = $part['text'];
+            }
+        }
+
+        return trim(implode('', $texts));
     }
 
     /**

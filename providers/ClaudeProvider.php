@@ -37,7 +37,7 @@ class CommentAI_ClaudeProvider extends CommentAI_BaseProvider
 
         $requestBody = array(
             'model' => $this->modelName,
-            'max_tokens' => intval($this->config->maxTokens ?: 300),
+            'max_tokens' => intval($this->config->maxTokens ?: 1024),
             'messages' => $claudeData['messages'],
         );
 
@@ -112,15 +112,26 @@ class CommentAI_ClaudeProvider extends CommentAI_BaseProvider
             throw new Exception('Claude JSON解析失败: ' . json_last_error_msg());
         }
 
-        if (isset($data['content'][0]['text'])) {
-            return trim($data['content'][0]['text']);
+        $blocks = isset($data['content']) && is_array($data['content']) ? $data['content'] : array();
+        $texts = array();
+        foreach ($blocks as $block) {
+            $type = isset($block['type']) ? $block['type'] : '';
+            if ($type === 'thinking') {
+                continue;
+            }
+            if (($type === 'text' || $type === '') && isset($block['text']) && is_string($block['text'])) {
+                $texts[] = $block['text'];
+            }
         }
 
-        // 处理停止原因
-        if (isset($data['stop_reason']) && $data['stop_reason'] === 'end_turn') {
-            if (isset($data['content'][0]['text'])) {
-                return trim($data['content'][0]['text']);
-            }
+        $content = trim(implode('', $texts));
+        if ($content !== '') {
+            return $content;
+        }
+
+        $stopReason = isset($data['stop_reason']) ? $data['stop_reason'] : '';
+        if ($stopReason === 'max_tokens') {
+            throw new Exception('Claude 输出被截断（思考占用了 Token 额度），请增大「最大Token数」');
         }
 
         throw new Exception('无法从 Claude 响应中提取回复内容: ' . $response);

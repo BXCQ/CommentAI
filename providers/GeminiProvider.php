@@ -40,14 +40,15 @@ class CommentAI_GeminiProvider extends CommentAI_BaseProvider
             'contents' => $geminiMessages['contents'],
             'generationConfig' => array(
                 'temperature' => floatval($this->config->temperature ?: 0.7),
-                'maxOutputTokens' => intval($this->config->maxTokens ?: 300),
+                'maxOutputTokens' => intval($this->config->maxTokens ?: 1024),
             )
         );
 
         // Gemini 2.5+ 默认会消耗 thinking token，评论回复关闭思考以保留输出额度
         if (preg_match('/gemini-2\.[5-9]|gemini-[3-9]/i', $this->modelName)) {
             $requestBody['generationConfig']['thinkingConfig'] = array(
-                'thinkingBudget' => 0
+                'thinkingBudget' => 0,
+                'includeThoughts' => false
             );
         }
 
@@ -117,13 +118,33 @@ class CommentAI_GeminiProvider extends CommentAI_BaseProvider
             throw new Exception('Gemini JSON解析失败: ' . json_last_error_msg());
         }
 
-        if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
-            return trim($data['candidates'][0]['content']['parts'][0]['text']);
+        $candidate = isset($data['candidates'][0]) ? $data['candidates'][0] : array();
+        $finishReason = isset($candidate['finishReason']) ? $candidate['finishReason'] : '';
+        $parts = isset($candidate['content']['parts']) && is_array($candidate['content']['parts'])
+            ? $candidate['content']['parts']
+            : array();
+
+        $texts = array();
+        foreach ($parts as $part) {
+            if (!empty($part['thought'])) {
+                continue;
+            }
+            if (isset($part['text']) && is_string($part['text']) && $part['text'] !== '') {
+                $texts[] = $part['text'];
+            }
         }
 
-        // 处理安全过滤导致的空响应
-        if (isset($data['candidates'][0]['finishReason']) && $data['candidates'][0]['finishReason'] === 'SAFETY') {
+        $content = trim(implode('', $texts));
+        if ($content !== '') {
+            return $content;
+        }
+
+        if ($finishReason === 'SAFETY') {
             throw new Exception('Gemini 内容被安全过滤器拦截');
+        }
+
+        if ($finishReason === 'MAX_TOKENS') {
+            throw new Exception('Gemini 输出被截断（思考占用了 Token 额度），请增大「最大Token数」');
         }
 
         throw new Exception('无法从 Gemini 响应中提取回复内容: ' . $response);
