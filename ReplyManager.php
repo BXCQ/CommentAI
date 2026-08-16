@@ -94,6 +94,13 @@ class CommentAI_ReplyManager
 
         try {
             $aiReply = $provider->generateReply($comment->text, $context);
+            $aiReply = is_string($aiReply) ? trim($aiReply) : '';
+
+            if ($aiReply === '') {
+                throw new Exception('AI返回空内容。若使用思考/推理模型，请关闭思考模式或增大「最大Token数」');
+            }
+
+            CommentAI_Plugin::log('AI回复已生成: coid=' . $comment->coid . ', 长度=' . mb_strlen($aiReply, 'UTF-8'));
 
             if (!$this->checkSensitiveWords($aiReply)) {
                 $this->saveToQueue(
@@ -120,6 +127,11 @@ class CommentAI_ReplyManager
      */
     private function finalizeReply($comment, $replyText)
     {
+        $replyText = is_string($replyText) ? trim($replyText) : '';
+        if ($replyText === '') {
+            throw new Exception('AI返回空内容，已取消发布');
+        }
+
         if ($this->config->showAIBadge) {
             $badgeText = $this->config->aiBadgeText ?: '🤖 AI辅助回复';
             $replyText .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";

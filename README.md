@@ -4,7 +4,7 @@
 
 让 AI 成为你的评论助手，自动生成高质量的回复内容
 
-[![Plugin](https://img.shields.io/badge/CommentAI-1.4.0-orange.svg)](https://github.com/BXCQ/CommentAI)
+[![Plugin](https://img.shields.io/badge/CommentAI-1.4.1-orange.svg)](https://github.com/BXCQ/CommentAI)
 [![Typecho](https://img.shields.io/badge/Typecho-1.2.1%20%7C%201.3.0-blue.svg)](http://typecho.org)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-purple.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -37,12 +37,12 @@ usr/plugins/CommentAI/
 
 ## 从 CommentAI 1.3.0 升级（插件版本，不是 Typecho）
 
-这里的 1.3.0 / 1.4.0 是 **本插件** 版本，写在 `Plugin.php` 的 `@version` 里。Typecho 本身没有 1.4.0，博客程序仍只需 **1.2.1 或 1.3.0**。
+这里的 1.3.0 / 1.4.x 是 **本插件** 版本，写在 `Plugin.php` 的 `@version` 里。Typecho 本身没有 1.4.0，博客程序仍只需 **1.2.1 或 1.3.0**。
 
 数据库表结构没有变化，旧队列数据可继续使用。但 **必须先禁用再启用插件**，否则新钩子不会生效。
 
 1. 后台禁用 CommentAI，再重新启用
-2. 打开插件设置，确认 AI 平台和模型后保存一次
+2. 打开插件设置，确认 AI 平台和模型后保存一次。1.4.1 起，思考/推理模型返回空 `content` 时不会再只发出 AI 标识；若「最大Token数」仍是 300，建议改为 512 或以上
 3. 以下配置已移除，保存后会自动忽略，无需手动清理：
    - 批量合并（`batchWindow`）
    - 回复延迟（`replyDelay`）
@@ -100,7 +100,7 @@ usr/plugins/CommentAI/
 | xAI Grok | `https://api.x.ai/v1` | `grok-4` |
 | Ollama | `http://127.0.0.1:11434/v1` | `llama3.2` |
 
-OpenAI 的 GPT-5 等推理模型会自动改用 `max_completion_tokens`，国内兼容接口仍发送 `max_tokens`。Gemini 2.5 会关闭 thinking，避免思考 token 占满输出额度。
+OpenAI 的 GPT-5 等推理模型会自动改用 `max_completion_tokens`，国内兼容接口仍发送 `max_tokens`。评论回复会自动关闭通义千问 / GLM 等模型的思考模式，Gemini 2.5 会关闭 thinking，避免思考 token 占满输出额度后只发出空回复。
 
 ### Prompt 配置
 
@@ -114,7 +114,7 @@ OpenAI 的 GPT-5 等推理模型会自动改用 `max_completion_tokens`，国内
 | 配置项 | 说明 |
 |--------|------|
 | 温度参数 | 0-1，越高越随机，建议 0.7-0.9 |
-| 最大 Token 数 | 单次回复最大长度，建议 200-500 |
+| 最大 Token 数 | 单次回复最大长度。思考/推理模型会占用额度，建议至少 512-1024 |
 | 敏感词过滤 | 每行一个，AI 回复包含则拦截 |
 | 每小时最大调用次数 | 防止 API 费用失控，0 为不限制 |
 

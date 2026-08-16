@@ -4,7 +4,7 @@
  *
  * @package CommentAI
  * @author 璇
- * @version 1.4.0
+ * @version 1.4.1
  * @link https://github.com/BXCQ/CommentAI
  */
 
@@ -186,9 +186,9 @@ class CommentAI_Plugin implements Typecho_Plugin_Interface
         $maxTokens = new Typecho_Widget_Helper_Form_Element_Text(
             'maxTokens',
             NULL,
-            '300',
+            '1024',
             _t('最大Token数'),
-            _t('单次回复的最大长度限制，建议200-500')
+            _t('单次回复的最大长度限制。思考/推理模型会占用额度，建议至少 512-1024，过小会导致只发出空回复')
         );
         $form->addInput($maxTokens);
 
