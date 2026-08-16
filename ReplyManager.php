@@ -137,6 +137,14 @@ class CommentAI_ReplyManager
             $replyText .= "\n\n<small style=\"color:#999;\">{$badgeText}</small>";
         }
 
+        $existingAI = $this->findExistingAIReply($comment->coid);
+        if ($existingAI) {
+            $this->updateReply($existingAI->coid, $replyText);
+            $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $replyText, 'published');
+            CommentAI_Plugin::log('已覆盖已发布的AI回复: reply_coid=' . $existingAI->coid);
+            return;
+        }
+
         switch ($this->config->replyMode) {
             case 'auto':
                 $this->publishReply($comment, $replyText);
@@ -146,6 +154,34 @@ class CommentAI_ReplyManager
                 $this->saveToQueue($comment->coid, $comment->cid, $comment->author, $comment->text, $replyText, 'pending');
                 break;
         }
+    }
+
+    /**
+     * 查找该评论下已发布的 AI 回复（按 coid 倒序取最新一条）
+     */
+    private function findExistingAIReply($parentCoid)
+    {
+        $row = $this->db->fetchRow($this->db->select()
+            ->from($this->prefix . 'comments')
+            ->where('parent = ?', intval($parentCoid))
+            ->where('agent LIKE ?', '%CommentAI%')
+            ->order('coid', Typecho_Db::SORT_DESC)
+        );
+        return $row ? (object)$row : null;
+    }
+
+    /**
+     * 覆盖已发布的 AI 回复正文，不新增评论、不改 commentsNum
+     */
+    private function updateReply($coid, $replyText)
+    {
+        $this->db->query($this->db->update($this->prefix . 'comments')
+            ->rows(array(
+                'text' => $replyText,
+                'agent' => 'CommentAI Plugin'
+            ))
+            ->where('coid = ?', intval($coid))
+        );
     }
 
     /**

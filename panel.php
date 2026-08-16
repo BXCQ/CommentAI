@@ -568,14 +568,18 @@ $queueList = $manager->getQueueList($statusFilter, $currentPage, 20);
                             <span class="btn-text">拒绝回复</span>
                         </a>
                     <?php endif; ?>
-                    
-                    <?php if ($item->status == 'error' || $item->status == 'rejected'): ?>
-                        <a href="<?php echo Helper::security()->getTokenUrl(Helper::options()->adminUrl . 'extending.php?panel=CommentAI%2Fpanel.php&do=regenerate&id=' . $item->id); ?>" 
-                           class="btn btn-warning">
-                            <span class="btn-icon">🔄</span>
-                            <span class="btn-text">重新生成</span>
-                        </a>
-                    <?php endif; ?>
+
+                    <?php
+                    $regenerateConfirm = $item->status == 'published'
+                        ? '将覆盖前台已发布的 AI 回复，确定重新生成吗？'
+                        : '确定要重新生成这条回复吗？';
+                    ?>
+                    <a href="<?php echo Helper::security()->getTokenUrl(Helper::options()->adminUrl . 'extending.php?panel=CommentAI%2Fpanel.php&do=regenerate&id=' . $item->id); ?>"
+                       class="btn btn-warning"
+                       onclick="return confirm('<?php echo $regenerateConfirm; ?>');">
+                        <span class="btn-icon">🔄</span>
+                        <span class="btn-text">重新生成</span>
+                    </a>
 
                     <a href="<?php echo Helper::options()->adminUrl . 'manage-comments.php?coid=' . $item->cid; ?>" 
                        class="btn btn-primary" 
